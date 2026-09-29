@@ -37,3 +37,9 @@ flowchart LR
 ```
 
 The future shell boundary is documented in [`core-abi.md`](core-abi.md), but V0.1.0 has no shell target or shell implementation.
+
+## Diagram
+
+Full component diagram, D2 source at [`architecture.d2`](architecture.d2), rendered to [`architecture.svg`](architecture.svg):
+
+![Application architecture](architecture.svg)

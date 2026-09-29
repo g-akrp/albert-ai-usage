@@ -1,0 +1,64 @@
+direction: down
+
+macos: "macOS shell (Swift/AppKit)" {
+  shape: rectangle
+  style.stroke-dash: 4
+  tray: "Tray icon + popover"
+}
+
+windows: "Windows shell (C#/WinUI)" {
+  shape: rectangle
+  style.stroke-dash: 4
+  tray: "Tray icon + popover"
+}
+
+core: "Rust Core" {
+  shape: rectangle
+  style.fill: "#eef7ff"
+
+  port: "UsageProvider port" {
+    shape: hexagon
+  }
+
+  registry: "Provider registry"
+
+  codex: "Codex adapter"
+  copilot: "Copilot adapter"
+  antigravity: "Antigravity adapter"
+  claude: "Claude Code adapter (MOCK for V0.1.0)" {
+    style.fill: "#fff3cd"
+  }
+
+  abi: "C-ABI boundary" {
+    shape: hexagon
+  }
+
+  registry -> codex
+  registry -> copilot
+  registry -> antigravity
+  registry -> claude
+  codex -> port: implements
+  copilot -> port: implements
+  antigravity -> port: implements
+  claude -> port: implements
+  port -> abi: "exposed via"
+}
+
+external: "External runtimes (local machine)" {
+  shape: cloud
+  codex_cli: "codex app-server"
+  copilot_cli: "gh CLI"
+  agy_cli: "agy local gRPC"
+}
+
+core.codex -> external.codex_cli: "fixture only in V0.1.0"
+core.copilot -> external.copilot_cli: "deferred"
+core.antigravity -> external.agy_cli: "deferred"
+
+macos.tray -> core.abi: "FFI (V0.2+)" {style.stroke-dash: 4}
+windows.tray -> core.abi: "P/Invoke (V0.2+)" {style.stroke-dash: 4}
+
+note: "V0.1.0 scope: core + port + Claude mock only. No GUI shell, no live provider calls." {
+  shape: text
+  style.italic: true
+}
