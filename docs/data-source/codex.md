@@ -1,6 +1,7 @@
 ---
 title: Codex data source
 description: How to get real Codex usage data, verified against a live app-server session.
+date: 2026-09-29
 ---
 
 # Codex data source
