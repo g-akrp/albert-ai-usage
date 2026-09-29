@@ -1,0 +1,20 @@
+{
+  "rateLimits": {
+    "primary": {
+      "usedPercent": 45.2,
+      "windowDurationMins": 300,
+      "resetsAt": 1790700000
+    },
+    "secondary": {
+      "usedPercent": 12.7,
+      "windowDurationMins": 10080,
+      "resetsAt": 1791200000
+    },
+    "planType": "plus",
+    "ordinaryUsageAllowed": true,
+    "rateLimitResetCredit": 2
+  },
+  "accountId": "acct_should_never_appear",
+  "credentials": "should_never_appear",
+  "balance": 999
+}
