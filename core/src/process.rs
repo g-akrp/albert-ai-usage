@@ -16,6 +16,34 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
+/// Live call to `gh api copilot_internal/user`. Off by default — only
+/// runs when `ALBERT_LIVE_COPILOT=1` is set (`make run-live-copilot`).
+/// `gh` handles its own stored auth token; no credential file is read
+/// here. A stale `GITHUB_TOKEN`/`GH_TOKEN` env var can shadow a
+/// working login and cause a generic 401 — see docs/data-source/
+/// copilot.md. Non-zero exit degrades to a sanitized error, never a
+/// raw stderr dump (in case a future `gh` version's error text ever
+/// includes anything sensitive).
+pub fn call_copilot_user() -> Result<String, String> {
+    // A stray GITHUB_TOKEN/GH_TOKEN env var silently shadows a working
+    // `gh auth login` and fails with a generic 401 (confirmed live,
+    // see docs/data-source/copilot.md). Remove them for this child
+    // process only — the parent shell's environment is untouched, and
+    // this makes gh fall back to its own stored keyring login.
+    let output = Command::new("gh")
+        .args(["api", "copilot_internal/user"])
+        .env_remove("GITHUB_TOKEN")
+        .env_remove("GH_TOKEN")
+        .output()
+        .map_err(|_| "could not run gh".to_string())?;
+
+    if !output.status.success() {
+        return Err("gh authentication or API call failed".to_string());
+    }
+
+    String::from_utf8(output.stdout).map_err(|_| "gh output was not valid UTF-8".to_string())
+}
+
 const HANDSHAKE_DELAY: Duration = Duration::from_millis(500);
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 

@@ -1,0 +1,33 @@
+{
+  "id": 47691236,
+  "login": "should_never_appear",
+  "analytics_tracking_id": "should_never_appear",
+  "copilot_plan": "individual",
+  "quota_reset_date": "2026-10-01",
+  "endpoints": {
+    "api": "should_never_appear"
+  },
+  "quota_snapshots": {
+    "chat": {
+      "entitlement": 200,
+      "remaining": 200,
+      "credits_used": 0,
+      "unlimited": false,
+      "percent_remaining": 100.0
+    },
+    "completions": {
+      "entitlement": 2000,
+      "remaining": 806,
+      "credits_used": 1194,
+      "unlimited": false,
+      "percent_remaining": 40.3
+    },
+    "premium_interactions": {
+      "entitlement": 300,
+      "remaining": 258,
+      "credits_used": 42,
+      "unlimited": false,
+      "percent_remaining": 86.0
+    }
+  }
+}
