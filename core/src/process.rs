@@ -58,19 +58,23 @@ pub fn call_codex_rate_limits() -> Result<String, String> {
         }
     });
 
+    // Envelope and method names confirmed against the authoritative
+    // schema (`codex app-server generate-json-schema --experimental`):
+    // no top-level "jsonrpc" field, and `initialize` requires
+    // `params.clientInfo.{name,version}`.
     write_line(
         &mut stdin,
-        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+        r#"{"id":1,"method":"initialize","params":{"clientInfo":{"name":"albert-ai-usage","version":"0.1.0"}}}"#,
     )?;
-    recv_line(&rx)?; // handshake ack, content not needed
+    recv_response_for_id(&rx, 1)?; // handshake ack, content not needed
 
     thread::sleep(HANDSHAKE_DELAY);
 
     write_line(
         &mut stdin,
-        r#"{"jsonrpc":"2.0","id":2,"method":"account/rateLimits/read","params":{}}"#,
+        r#"{"id":2,"method":"account/rateLimits/read","params":null}"#,
     )?;
-    let response = recv_line(&rx)?;
+    let response = recv_response_for_id(&rx, 2)?;
 
     let _ = child.kill();
     let _ = child.wait();
@@ -85,12 +89,38 @@ fn write_line(stdin: &mut ChildStdin, line: &str) -> Result<(), String> {
         .map_err(|_| "could not write to app-server".to_string())
 }
 
-fn recv_line(rx: &mpsc::Receiver<Result<String, String>>) -> Result<String, String> {
-    match rx.recv_timeout(READ_TIMEOUT) {
-        Ok(Ok(line)) => Ok(line),
-        Ok(Err(reason)) => Err(reason),
-        Err(_) => Err("timed out waiting for app-server response".to_string()),
+/// The server interleaves unsolicited notifications (no `"id"` field,
+/// e.g. `remoteControl/status/changed`) between responses. Reads lines
+/// until one is a response whose `"id"` matches, skipping the rest.
+/// Bounded both by `READ_TIMEOUT` per read and `MAX_LINES` total, so a
+/// pathological notification stream can't hang this forever.
+const MAX_LINES: u32 = 20;
+
+fn recv_response_for_id(
+    rx: &mpsc::Receiver<Result<String, String>>,
+    id: u64,
+) -> Result<String, String> {
+    for _ in 0..MAX_LINES {
+        let line = match rx.recv_timeout(READ_TIMEOUT) {
+            Ok(Ok(line)) => line,
+            Ok(Err(reason)) => return Err(reason),
+            Err(_) => return Err("timed out waiting for app-server response".to_string()),
+        };
+        if is_response_for(&line, id) {
+            return Ok(line);
+        }
+        // else: an unsolicited notification, keep reading.
     }
+    Err("too many notifications before a matching response".to_string())
+}
+
+/// True when `line` is a JSON-RPC response (not a notification) whose
+/// `"id"` matches `id`.
+fn is_response_for(line: &str, id: u64) -> bool {
+    serde_json::from_str::<serde_json::Value>(line)
+        .ok()
+        .and_then(|v| v.get("id").and_then(|i| i.as_u64()))
+        == Some(id)
 }
 
 /// Pulls the `"result"` object out of a JSON-RPC 2.0 response envelope
@@ -143,5 +173,24 @@ mod tests {
     fn malformed_json_is_a_sanitized_error() {
         let err = extract_result_field("not json").unwrap_err();
         assert_eq!(err, "malformed JSON-RPC response");
+    }
+
+    #[test]
+    fn is_response_for_matches_id() {
+        assert!(is_response_for(r#"{"id":2,"result":{}}"#, 2));
+        assert!(!is_response_for(r#"{"id":1,"result":{}}"#, 2));
+    }
+
+    #[test]
+    fn is_response_for_rejects_notifications_without_id() {
+        assert!(!is_response_for(
+            r#"{"method":"account/updated","params":{}}"#,
+            2
+        ));
+    }
+
+    #[test]
+    fn is_response_for_rejects_malformed_lines() {
+        assert!(!is_response_for("not json", 2));
     }
 }
