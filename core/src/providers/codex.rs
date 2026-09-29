@@ -101,8 +101,36 @@ impl UsageProvider for CodexProvider {
     }
 
     fn fetch_usage(&self) -> Result<UsageSnapshot, ProviderError> {
-        // V0.1.0: fixture only, no live app-server call.
+        // Off by default. Set ALBERT_LIVE_CODEX=1 (`make run-live`) to
+        // spawn the real app-server instead of reading the fixture.
+        if std::env::var("ALBERT_LIVE_CODEX").as_deref() == Ok("1") {
+            return Ok(match crate::process::call_codex_rate_limits() {
+                Ok(raw) => match parse_rate_limits(&raw) {
+                    Ok(mut snapshot) => {
+                        snapshot.status = ProviderStatus::Available;
+                        snapshot.note = Some("live app-server response".to_string());
+                        snapshot
+                    }
+                    Err(_) => unsupported("live response did not match the expected shape"),
+                },
+                Err(reason) => unsupported(&reason),
+            });
+        }
+
         parse_rate_limits(FIXTURE)
+    }
+}
+
+fn unsupported(reason: &str) -> UsageSnapshot {
+    UsageSnapshot {
+        provider: "codex".to_string(),
+        status: ProviderStatus::Unsupported,
+        session_usage_percent: None,
+        session_reset_label: None,
+        weekly_usage_percent: None,
+        weekly_reset_label: None,
+        counts: Vec::new(),
+        note: Some(reason.to_string()),
     }
 }
 
