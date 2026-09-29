@@ -107,12 +107,12 @@ pub fn parse_rate_limits(raw_json: &str) -> Result<UsageSnapshot, ProviderError>
 pub struct CodexProvider;
 
 impl UsageProvider for CodexProvider {
-    fn id(&self) -> &'static str {
-        "codex"
+    fn id(&self) -> String {
+        "codex".to_string()
     }
 
-    fn display_name(&self) -> &'static str {
-        "Codex"
+    fn display_name(&self) -> String {
+        "Codex".to_string()
     }
 
     fn fetch_usage(&self) -> Result<UsageSnapshot, ProviderError> {

@@ -61,8 +61,12 @@ pub struct ProviderError(pub String);
 /// The port every provider adapter implements. Synchronous for V0.1.0:
 /// the CLI does one-shot sequential/isolated calls, no concurrent
 /// refresh requirement yet.
+///
+/// `id` returns an owned `String`, not `&'static str`: a provider type
+/// can have more than one live instance (e.g. one Copilot adapter per
+/// discovered GitHub account), each needing its own id.
 pub trait UsageProvider {
-    fn id(&self) -> &'static str;
-    fn display_name(&self) -> &'static str;
+    fn id(&self) -> String;
+    fn display_name(&self) -> String;
     fn fetch_usage(&self) -> Result<UsageSnapshot, ProviderError>;
 }

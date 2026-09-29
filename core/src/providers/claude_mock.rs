@@ -9,12 +9,12 @@ use crate::provider::{ProviderError, ProviderStatus, UsageProvider, UsageSnapsho
 pub struct ClaudeMockProvider;
 
 impl UsageProvider for ClaudeMockProvider {
-    fn id(&self) -> &'static str {
-        "claude-code"
+    fn id(&self) -> String {
+        "claude-code".to_string()
     }
 
-    fn display_name(&self) -> &'static str {
-        "Claude Code"
+    fn display_name(&self) -> String {
+        "Claude Code".to_string()
     }
 
     fn fetch_usage(&self) -> Result<UsageSnapshot, ProviderError> {

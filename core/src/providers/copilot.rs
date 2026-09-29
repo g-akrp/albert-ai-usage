@@ -2,15 +2,22 @@
 //! internal/undocumented endpoint but no special scope needed — a
 //! plain `gh auth login` token works). Field shapes confirmed by a
 //! live call, not research alone (docs/data-source/copilot.md).
-//! V0.1.0 default: reads a sanitized fixture, no live call. Live
-//! capture is a separate, opt-in step (`ALBERT_LIVE_COPILOT=1`,
-//! `make run-live-copilot`, see `crate::process`).
 //!
-//! Allowlist only: copilot_plan, and each quota_snapshots.*.
-//! {entitlement,credits_used}. Everything else in the real response
-//! (id, login, analytics_tracking_id, endpoints, enterprise/org lists,
-//! and any unknown field) is dropped by construction — the deserialize
-//! target below has no field for them.
+//! V0.1.0 default: reads a sanitized fixture, one demo instance, no
+//! live call. Live capture is opt-in (`ALBERT_LIVE_COPILOT=1`, `make
+//! run-live-copilot`) and queries EVERY GitHub account `gh` has
+//! stored (`process::list_gh_accounts`), one `CopilotProvider`
+//! instance per account, each with its own `id` — a person can have
+//! more than one account (e.g. personal + a business seat), and each
+//! reports independently.
+//!
+//! Allowlist only: copilot_plan, login (a public username, not a
+//! secret — safe here specifically to tell multiple accounts apart in
+//! output), and each quota_snapshots.*.{entitlement,credits_used}.
+//! Everything else in the real response (id, analytics_tracking_id,
+//! endpoints, enterprise/org lists, and any unknown field) is dropped
+//! by construction — the deserialize target below has no field for
+//! them.
 
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -21,6 +28,7 @@ const FIXTURE: &str = include_str!("../../tests/fixtures/copilot_user.json");
 
 #[derive(Debug, Deserialize)]
 struct RawResponse {
+    login: Option<String>,
     #[serde(rename = "copilot_plan")]
     copilot_plan: Option<String>,
     #[serde(rename = "quota_snapshots")]
@@ -53,10 +61,13 @@ pub fn parse_copilot_user(raw_json: &str) -> Result<UsageSnapshot, ProviderError
         })
         .collect();
 
-    let note = match &parsed.copilot_plan {
+    let mut note = match &parsed.copilot_plan {
         Some(plan) => format!("plan: {plan}"),
         None => "plan unknown".to_string(),
     };
+    if let Some(login) = &parsed.login {
+        note.push_str(&format!("; account: {login}"));
+    }
 
     Ok(UsageSnapshot {
         provider: "copilot".to_string(),
@@ -70,45 +81,81 @@ pub fn parse_copilot_user(raw_json: &str) -> Result<UsageSnapshot, ProviderError
     })
 }
 
-pub struct CopilotProvider;
+/// `account: None` is the V0.1.0 default demo instance (fixture-
+/// backed, id `"copilot"`). `account: Some(name)` is a live,
+/// account-specific instance (id `"copilot:<name>"`), produced by
+/// `discover_live_providers`.
+pub struct CopilotProvider {
+    account: Option<String>,
+}
 
-impl UsageProvider for CopilotProvider {
-    fn id(&self) -> &'static str {
-        "copilot"
+impl CopilotProvider {
+    pub fn fixture() -> Self {
+        Self { account: None }
     }
 
-    fn display_name(&self) -> &'static str {
-        "GitHub Copilot"
-    }
-
-    fn fetch_usage(&self) -> Result<UsageSnapshot, ProviderError> {
-        // Off by default. Set ALBERT_LIVE_COPILOT=1
-        // (`make run-live-copilot`) to call the real `gh` CLI instead
-        // of reading the fixture.
-        if std::env::var("ALBERT_LIVE_COPILOT").as_deref() == Ok("1") {
-            return Ok(match crate::process::call_copilot_user() {
-                Ok(raw) => match parse_copilot_user(&raw) {
-                    Ok(mut snapshot) => {
-                        snapshot.status = ProviderStatus::Available;
-                        snapshot.note = Some(format!(
-                            "live gh response; {}",
-                            snapshot.note.unwrap_or_default()
-                        ));
-                        snapshot
-                    }
-                    Err(_) => unsupported("live response did not match the expected shape"),
-                },
-                Err(reason) => unsupported(&reason),
-            });
+    pub fn for_account(account: String) -> Self {
+        Self {
+            account: Some(account),
         }
-
-        parse_copilot_user(FIXTURE)
     }
 }
 
-fn unsupported(reason: &str) -> UsageSnapshot {
+impl UsageProvider for CopilotProvider {
+    fn id(&self) -> String {
+        match &self.account {
+            Some(account) => format!("copilot:{account}"),
+            None => "copilot".to_string(),
+        }
+    }
+
+    fn display_name(&self) -> String {
+        "GitHub Copilot".to_string()
+    }
+
+    fn fetch_usage(&self) -> Result<UsageSnapshot, ProviderError> {
+        match &self.account {
+            Some(account) => Ok(
+                match crate::process::call_copilot_user_for_account(account) {
+                    Ok(raw) => match parse_copilot_user(&raw) {
+                        Ok(mut snapshot) => {
+                            snapshot.provider = self.id();
+                            snapshot.status = ProviderStatus::Available;
+                            snapshot.note = Some(format!(
+                                "live gh response; {}",
+                                snapshot.note.unwrap_or_default()
+                            ));
+                            snapshot
+                        }
+                        Err(_) => unsupported(
+                            &self.id(),
+                            "live response did not match the expected shape",
+                        ),
+                    },
+                    Err(reason) => unsupported(&self.id(), &reason),
+                },
+            ),
+            None => parse_copilot_user(FIXTURE),
+        }
+    }
+}
+
+/// Builds one live `CopilotProvider` per GitHub account `gh` has
+/// stored. Returns an empty vec (not an error) when no accounts are
+/// found or the config can't be read — the CLI just shows no Copilot
+/// rows rather than crashing; the reason is discoverable via `gh auth
+/// status` on the human's own machine.
+pub fn discover_live_providers() -> Vec<Box<dyn UsageProvider>> {
+    crate::process::list_gh_accounts()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|account| Box::new(CopilotProvider::for_account(account)) as Box<dyn UsageProvider>)
+        .collect()
+}
+
+fn unsupported(id: &str, reason: &str) -> UsageSnapshot {
     UsageSnapshot {
-        provider: "copilot".to_string(),
+        provider: id.to_string(),
         status: ProviderStatus::Unsupported,
         session_usage_percent: None,
         session_reset_label: None,
@@ -144,10 +191,11 @@ mod tests {
     }
 
     #[test]
-    fn note_mentions_plan_never_raw_identity_fields() {
+    fn note_mentions_plan_and_login_never_other_identity_fields() {
         let snapshot = parse_copilot_user(FIXTURE).unwrap();
         let note = snapshot.note.unwrap();
         assert!(note.contains("individual"));
+        assert!(note.contains("account: demo-account"));
         assert!(!note.contains("should_never_appear"));
     }
 
@@ -164,9 +212,15 @@ mod tests {
     }
 
     #[test]
-    fn copilot_provider_identity() {
-        let provider = CopilotProvider;
+    fn fixture_provider_identity() {
+        let provider = CopilotProvider::fixture();
         assert_eq!(provider.id(), "copilot");
         assert_eq!(provider.display_name(), "GitHub Copilot");
+    }
+
+    #[test]
+    fn account_provider_id_includes_account_name() {
+        let provider = CopilotProvider::for_account("g-akrp".to_string());
+        assert_eq!(provider.id(), "copilot:g-akrp");
     }
 }

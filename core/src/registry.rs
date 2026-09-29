@@ -23,7 +23,7 @@ impl ProviderRegistry {
     pub fn refresh_all(&self) -> Vec<(String, Result<UsageSnapshot, ProviderError>)> {
         self.providers
             .iter()
-            .map(|p| (p.id().to_string(), p.fetch_usage()))
+            .map(|p| (p.id(), p.fetch_usage()))
             .collect()
     }
 }
@@ -40,11 +40,11 @@ mod tests {
 
     struct OkProvider;
     impl UsageProvider for OkProvider {
-        fn id(&self) -> &'static str {
-            "ok"
+        fn id(&self) -> String {
+            "ok".to_string()
         }
-        fn display_name(&self) -> &'static str {
-            "Ok Provider"
+        fn display_name(&self) -> String {
+            "Ok Provider".to_string()
         }
         fn fetch_usage(&self) -> Result<UsageSnapshot, ProviderError> {
             Ok(UsageSnapshot {
@@ -62,11 +62,11 @@ mod tests {
 
     struct FailProvider;
     impl UsageProvider for FailProvider {
-        fn id(&self) -> &'static str {
-            "fail"
+        fn id(&self) -> String {
+            "fail".to_string()
         }
-        fn display_name(&self) -> &'static str {
-            "Fail Provider"
+        fn display_name(&self) -> String {
+            "Fail Provider".to_string()
         }
         fn fetch_usage(&self) -> Result<UsageSnapshot, ProviderError> {
             Err(ProviderError("sanitized failure".into()))

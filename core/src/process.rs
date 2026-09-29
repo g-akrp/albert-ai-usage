@@ -16,24 +16,88 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-/// Live call to `gh api copilot_internal/user`. Off by default — only
-/// runs when `ALBERT_LIVE_COPILOT=1` is set (`make run-live-copilot`).
-/// `gh` handles its own stored auth token; no credential file is read
-/// here. A stale `GITHUB_TOKEN`/`GH_TOKEN` env var can shadow a
-/// working login and cause a generic 401 — see docs/data-source/
-/// copilot.md. Non-zero exit degrades to a sanitized error, never a
-/// raw stderr dump (in case a future `gh` version's error text ever
-/// includes anything sensitive).
-pub fn call_copilot_user() -> Result<String, String> {
-    // A stray GITHUB_TOKEN/GH_TOKEN env var silently shadows a working
-    // `gh auth login` and fails with a generic 401 (confirmed live,
-    // see docs/data-source/copilot.md). Remove them for this child
-    // process only — the parent shell's environment is untouched, and
-    // this makes gh fall back to its own stored keyring login.
+/// Lists every GitHub account `gh` currently has stored, by reading
+/// `~/.config/gh/hosts.yml` directly (no documented `gh` command
+/// prints a clean list — `gh auth status` is human text only).
+///
+/// KNOWN LIMITATION: this is a best-effort parse of gh's own config
+/// file format, not a stable public API; it could break on a future
+/// `gh` version. Also macOS/Linux only — Windows stores this at
+/// `%APPDATA%\GitHub CLI\hosts.yml`, not handled here (V0.1.0 has no
+/// Windows shell yet).
+pub fn list_gh_accounts() -> Result<Vec<String>, String> {
+    let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
+    let path = format!("{home}/.config/gh/hosts.yml");
+    let contents =
+        std::fs::read_to_string(&path).map_err(|_| "could not read gh hosts config".to_string())?;
+
+    let accounts = parse_gh_accounts(&contents);
+    if accounts.is_empty() {
+        return Err("no gh accounts found".to_string());
+    }
+    Ok(accounts)
+}
+
+/// Pure parser for `gh`'s `hosts.yml` shape:
+/// ```yaml
+/// github.com:
+///     git_protocol: https
+///     users:
+///         g-akrp:
+///         2521180709_bblghcp:
+///     user: 2521180709_bblghcp
+/// ```
+/// Account names are indented under `users:` and end with `:` with no
+/// value on the same line. Separated from `list_gh_accounts` so the
+/// parsing logic is unit-testable without touching the real file.
+fn parse_gh_accounts(yaml: &str) -> Vec<String> {
+    let mut accounts = Vec::new();
+    let mut in_users_block = false;
+    for line in yaml.lines() {
+        if line.trim_start() == "users:" {
+            in_users_block = true;
+            continue;
+        }
+        if in_users_block {
+            let trimmed = line.trim_start();
+            let indent = line.len() - trimmed.len();
+            if indent >= 8 && trimmed.ends_with(':') && !trimmed.contains(' ') {
+                accounts.push(trimmed.trim_end_matches(':').to_string());
+            } else if !trimmed.is_empty() {
+                in_users_block = false;
+            }
+        }
+    }
+    accounts
+}
+
+/// Live call to `gh api copilot_internal/user` for one specific
+/// account. Off by default — only runs when `ALBERT_LIVE_COPILOT=1`
+/// is set (`make run-live-copilot`). No credential file is read here:
+/// `gh auth token --user <account>` reads that account's already-
+/// stored token without switching gh's global active account or
+/// mutating any state.
+///
+/// A stale `GITHUB_TOKEN`/`GH_TOKEN` env var can shadow the intended
+/// account and cause a generic 401 — see docs/data-source/copilot.md.
+/// Both are removed for this child process only; the parent shell's
+/// environment is never touched. Non-zero exit degrades to a
+/// sanitized error, never a raw stderr dump.
+pub fn call_copilot_user_for_account(account: &str) -> Result<String, String> {
+    let token_output = Command::new("gh")
+        .args(["auth", "token", "--user", account])
+        .output()
+        .map_err(|_| "could not run gh auth token".to_string())?;
+    if !token_output.status.success() {
+        return Err(format!("no stored gh token for account {account}"));
+    }
+    let token = String::from_utf8(token_output.stdout)
+        .map_err(|_| "gh auth token output was not valid UTF-8".to_string())?;
+
     let output = Command::new("gh")
         .args(["api", "copilot_internal/user"])
         .env_remove("GITHUB_TOKEN")
-        .env_remove("GH_TOKEN")
+        .env("GH_TOKEN", token.trim())
         .output()
         .map_err(|_| "could not run gh".to_string())?;
 
@@ -173,6 +237,27 @@ fn extract_result_field(line: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_two_accounts_from_real_hosts_yml_shape() {
+        let yaml = "github.com:\n    git_protocol: https\n    users:\n        g-akrp:\n        2521180709_bblghcp:\n    user: 2521180709_bblghcp\n";
+        let accounts = parse_gh_accounts(yaml);
+        assert_eq!(accounts, vec!["g-akrp", "2521180709_bblghcp"]);
+    }
+
+    #[test]
+    fn parses_single_account() {
+        let yaml = "github.com:\n    users:\n        only-one:\n    user: only-one\n";
+        assert_eq!(parse_gh_accounts(yaml), vec!["only-one"]);
+    }
+
+    #[test]
+    fn no_users_block_returns_empty() {
+        assert_eq!(
+            parse_gh_accounts("github.com:\n    git_protocol: https\n"),
+            Vec::<String>::new()
+        );
+    }
 
     #[test]
     fn passes_through_when_already_wrapped() {

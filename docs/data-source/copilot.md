@@ -46,17 +46,28 @@ The adapter strips `GITHUB_TOKEN`/`GH_TOKEN` for the `gh` child process only (`C
 
 Three quota categories, all the same used/limit shape — not just `premium_interactions`. `entitlement` is the limit, `credits_used` is used; `remaining` is redundant (`entitlement - credits_used`, confirmed to match exactly across all three in the live sample) so only `entitlement`/`credits_used` need reading.
 
+## Multiple accounts
+
+A person can have more than one GitHub account logged into `gh` at once (e.g. a personal account plus a work seat) — confirmed on this machine: `g-akrp` (individual plan) and `2521180709_bblghcp` (business seat), each with genuinely different quota numbers.
+
+`gh api` has no per-call account-selector flag, and only one account is "active" at a time. Instead: `gh auth token --user <account>` reads that specific account's already-stored token without switching gh's global active account or mutating any state — safe to use per-call.
+
+The live path enumerates every account `gh` has stored, by reading `~/.config/gh/hosts.yml` directly (`process::list_gh_accounts` / `parse_gh_accounts`) — no documented `gh` command prints a clean account list; `gh auth status` is human text only. One `CopilotProvider` instance is built per account (`CopilotProvider::for_account`), each reporting independently with id `copilot:<account>`.
+
+**Known limitation:** this is a best-effort parse of `gh`'s own config file format, not a stable public API — could break on a future `gh` version. Also macOS/Linux only; Windows stores this at `%APPDATA%\GitHub CLI\hosts.yml`, not handled yet (no Windows shell exists in V0.1.0 anyway).
+
 ## Allowlist — fields this codebase reads
 
 | Field | Type | Notes |
 |---|---|---|
 | `copilot_plan` | string | for the note |
+| `login` | string | public username, not a secret — needed to tell multiple accounts apart in output |
 | `quota_snapshots.{chat,completions,premium_interactions}.entitlement` | integer | limit |
 | `quota_snapshots.{chat,completions,premium_interactions}.credits_used` | integer | used |
 
 ## Never read, dropped by construction
 
-`id`, `login`, `analytics_tracking_id`, `enterprise_list`, `organization_login_list`, `organization_list`, `endpoints` (internal API URLs), `is_staff`, `cli_remote_control_enabled`, and any other field not listed above. No field exists for these in the deserialize target, so serde drops them — same compile-time-shape guarantee as the Codex adapter.
+`id` (the opaque numeric account id, distinct from `login`), `analytics_tracking_id`, `enterprise_list`, `organization_login_list`, `organization_list`, `endpoints` (internal API URLs), `is_staff`, `cli_remote_control_enabled`, and any other field not listed above. No field exists for these in the deserialize target, so serde drops them — same compile-time-shape guarantee as the Codex adapter.
 
 ## Safety notes
 
