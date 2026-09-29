@@ -54,6 +54,7 @@ mod tests {
                 session_reset_label: None,
                 weekly_usage_percent: None,
                 weekly_reset_label: None,
+                counts: Vec::new(),
                 note: None,
             })
         }

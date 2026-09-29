@@ -25,6 +25,7 @@ impl UsageProvider for ClaudeMockProvider {
             session_reset_label: Some("resets in 5h (sample)".to_string()),
             weekly_usage_percent: Some(34.0),
             weekly_reset_label: Some("resets in 6d (sample)".to_string()),
+            counts: Vec::new(),
             note: Some("mock data, no live source exists".to_string()),
         })
     }

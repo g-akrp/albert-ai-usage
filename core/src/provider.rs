@@ -23,6 +23,16 @@ pub enum ProviderStatus {
     Error(String),
 }
 
+/// A used/limit credit count (e.g. GitHub Copilot premium interactions:
+/// "42/300"), for providers that report quota as a count rather than a
+/// percentage. `label` names the count (e.g. "premium_interactions").
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct UsageCount {
+    pub label: String,
+    pub used: u32,
+    pub limit: u32,
+}
+
 /// Normalized usage snapshot every provider returns, regardless of its
 /// underlying source shape. Only sanitized, allowlisted fields belong
 /// here — never account identifiers, credentials, or raw responses.
@@ -34,6 +44,10 @@ pub struct UsageSnapshot {
     pub session_reset_label: Option<String>,
     pub weekly_usage_percent: Option<f32>,
     pub weekly_reset_label: Option<String>,
+    /// Used/limit count quotas (e.g. Copilot premium interactions).
+    /// Separate from the percent fields since not every provider's
+    /// quota is expressible as a percentage.
+    pub counts: Vec<UsageCount>,
     /// Short, sanitized note for the human (e.g. "fixture data, not
     /// live" or "mock provider"). Never raw provider output.
     pub note: Option<String>,

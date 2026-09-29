@@ -32,6 +32,9 @@ pub fn format_result(id: &str, result: &Result<UsageSnapshot, ProviderError>) ->
                         .unwrap_or_default()
                 ));
             }
+            for count in &snapshot.counts {
+                lines.push(format!("  {}: {}/{}", count.label, count.used, count.limit));
+            }
             if let Some(note) = &snapshot.note {
                 lines.push(format!("  note: {note}"));
             }
@@ -55,6 +58,7 @@ mod tests {
             session_reset_label: None,
             weekly_usage_percent: None,
             weekly_reset_label: None,
+            counts: Vec::new(),
             note: Some("mock data, no live source exists".into()),
         };
         let out = format_result("claude-code", &Ok(snapshot));
@@ -68,5 +72,25 @@ mod tests {
     fn format_result_shows_sanitized_error() {
         let out = format_result("x", &Err(ProviderError("sanitized failure".into())));
         assert!(out.contains("Error: sanitized failure"));
+    }
+
+    #[test]
+    fn format_result_shows_used_limit_counts() {
+        let snapshot = UsageSnapshot {
+            provider: "copilot".into(),
+            status: ProviderStatus::Available,
+            session_usage_percent: None,
+            session_reset_label: None,
+            weekly_usage_percent: None,
+            weekly_reset_label: None,
+            counts: vec![provider::UsageCount {
+                label: "premium_interactions".into(),
+                used: 42,
+                limit: 300,
+            }],
+            note: None,
+        };
+        let out = format_result("copilot", &Ok(snapshot));
+        assert!(out.contains("premium_interactions: 42/300"));
     }
 }
