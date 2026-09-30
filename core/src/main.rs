@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use albert_ai_usage_core::config::{load_config, run_provider};
-use albert_ai_usage_core::{format_report, icon, swiftbar};
+use albert_ai_usage_core::{format_report, icon, parallel, swiftbar};
 
 fn providers_dir() -> PathBuf {
     std::env::var("ALBERT_PROVIDERS_DIR")
@@ -54,30 +54,32 @@ fn run_all_providers() -> Vec<swiftbar::ProviderRun> {
         .collect();
     paths.sort();
 
-    paths
-        .into_iter()
-        .filter_map(|path| {
-            let json = fs::read_to_string(&path).ok()?;
-            let config = load_config(&json).ok()?;
-            let result = run_provider(&config);
-            let icon_label = config
-                .icon_label
-                .clone()
-                .unwrap_or_else(|| config.id.chars().take(3).collect::<String>().to_uppercase());
-            let icon_color = config
-                .icon_color
-                .as_deref()
-                .and_then(icon::parse_hex_color)
-                .unwrap_or([110, 110, 110]); // neutral gray fallback
-            Some(swiftbar::ProviderRun {
-                id: config.id,
-                name: config.name,
-                icon_label,
-                icon_color,
-                result,
-            })
-        })
-        .collect()
+    // Each provider runs on its own thread; order stays path-sorted.
+    // A panicking provider is skipped (same as an unreadable config).
+    let runs = parallel::map_parallel(paths, run_one_provider, |_| None);
+    runs.into_iter().flatten().collect()
+}
+
+fn run_one_provider(path: PathBuf) -> Option<swiftbar::ProviderRun> {
+    let json = fs::read_to_string(&path).ok()?;
+    let config = load_config(&json).ok()?;
+    let result = run_provider(&config);
+    let icon_label = config
+        .icon_label
+        .clone()
+        .unwrap_or_else(|| config.id.chars().take(3).collect::<String>().to_uppercase());
+    let icon_color = config
+        .icon_color
+        .as_deref()
+        .and_then(icon::parse_hex_color)
+        .unwrap_or([110, 110, 110]); // neutral gray fallback
+    Some(swiftbar::ProviderRun {
+        id: config.id,
+        name: config.name,
+        icon_label,
+        icon_color,
+        result,
+    })
 }
 
 /// Renders each provider's real, live icon at a larger preview scale
@@ -93,22 +95,18 @@ fn icon_preview() {
     }
 
     for run in run_all_providers() {
-        let Ok(report) = run.result else {
-            eprintln!("{}: skipped (provider errored)", run.id);
-            continue;
+        let (value_text, value_color) = match &run.result {
+            Ok(report) => match swiftbar::max_percent(report) {
+                Some(pct) => (format!("{pct:.0}%"), icon::severity_rgb(pct)),
+                None => {
+                    eprintln!("{}: skipped (no numeric usage)", run.id);
+                    continue;
+                }
+            },
+            Err(_) => (icon::ERROR_TEXT.to_string(), icon::ERROR_RGB),
         };
-        let Some(pct) = swiftbar::max_percent(&report) else {
-            eprintln!("{}: skipped (no numeric usage)", run.id);
-            continue;
-        };
-        let pct_text = format!("{pct:.0}%");
-        let png = icon::render_two_line_png(
-            &run.icon_label,
-            &pct_text,
-            run.icon_color,
-            icon::severity_rgb(pct),
-            8,
-        );
+        let png =
+            icon::render_two_line_png(&run.icon_label, &value_text, run.icon_color, value_color, 8);
         let path = dir.join(format!("{}.png", run.id));
         if let Err(e) = fs::write(&path, &png) {
             eprintln!("{}: could not write {path:?}: {e}", run.id);

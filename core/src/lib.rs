@@ -1,5 +1,6 @@
 pub mod config;
 pub mod icon;
+pub mod parallel;
 pub mod swiftbar;
 
 use config::mapping::Report;

@@ -32,3 +32,11 @@ Mechanism: clicking calls `bash=<this binary> param1=--pin param2=<id> terminal=
 ## Compact number shown
 
 The highest used-percent across every window in the pinned provider's report (the most urgent number is the most useful at a glance) — e.g. "Codex 47%", colored green/orange/red at 70%/90% thresholds. A stale pin (a provider id no longer in `providers/`) falls back to the cycling default instead of erroring.
+
+## Parallel refresh
+
+Providers run concurrently, one thread each (`core/src/parallel.rs`), so a refresh takes as long as the slowest provider instead of the sum. Output order stays sorted by config filename.
+
+## Error icon
+
+A provider whose fetch fails shows the normal two-row icon with its brand label on top and a red `ERR` below, instead of disappearing from the menu bar. Errored providers take part in the cycling header, and a pinned provider that errors shows its error icon. The reason is in the icon's `alt=` text and in the dropdown row.

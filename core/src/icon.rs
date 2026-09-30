@@ -39,6 +39,10 @@ pub fn severity_rgb(pct: f32) -> [u8; 3] {
     }
 }
 
+/// Bottom-row text and color for a provider whose fetch failed.
+pub const ERROR_TEXT: &str = "ERR";
+pub const ERROR_RGB: [u8; 3] = [255, 59, 48]; // systemRed
+
 const GLYPH_W: u32 = 3;
 const GLYPH_H: u32 = 5;
 const SPACING: u32 = 1;

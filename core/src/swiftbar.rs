@@ -56,15 +56,41 @@ fn percent_color(pct: f32) -> &'static str {
 /// accessibility (VoiceOver etc.), which isn't visibly rendered.
 fn push_icon_header(out: &mut String, name: &str, icon_label: &str, icon_color: [u8; 3], pct: f32) {
     let pct_text = format!("{pct:.0}%");
-    let png = crate::icon::render_two_line_png(
+    push_icon_line(
+        out,
         icon_label,
         &pct_text,
         icon_color,
         crate::icon::severity_rgb(pct),
-        2,
+        &format!("{name} {pct_text}"),
     );
+}
+
+/// Same icon as `push_icon_header`, but with a red `ERR` value row:
+/// the provider's brand label stays so you see which one failed.
+fn push_error_icon_header(out: &mut String, run: &ProviderRun, reason: &str) {
+    push_icon_line(
+        out,
+        &run.icon_label,
+        crate::icon::ERROR_TEXT,
+        run.icon_color,
+        crate::icon::ERROR_RGB,
+        &format!("{} error: {}", run.name, reason),
+    );
+}
+
+fn push_icon_line(
+    out: &mut String,
+    top: &str,
+    bottom: &str,
+    top_color: [u8; 3],
+    bottom_color: [u8; 3],
+    alt: &str,
+) {
+    let png = crate::icon::render_two_line_png(top, bottom, top_color, bottom_color, 2);
     let b64 = crate::icon::to_base64(&png);
-    out.push_str(&format!(" | image={b64} alt=\"{name} {pct_text}\"\n"));
+    let alt = alt.replace('"', "'").replace('\n', " ");
+    out.push_str(&format!(" | image={b64} alt=\"{alt}\"\n"));
 }
 
 /// One provider's run: its config id, full display name (dropdown),
@@ -92,37 +118,37 @@ pub fn render(binary_path: &str, pinned: Option<&str>, runs: &[ProviderRun]) -> 
     out
 }
 
-fn render_header(out: &mut String, pinned: Option<&str>, runs: &[ProviderRun]) {
-    if let Some(pinned_id) = pinned {
-        if let Some(run) = runs.iter().find(|r| r.id == pinned_id) {
-            if let Ok(report) = &run.result {
-                match max_percent(report) {
-                    Some(pct) => {
-                        push_icon_header(out, &run.name, &run.icon_label, run.icon_color, pct);
-                        return;
-                    }
-                    None => {
-                        out.push_str(&format!("{}\n", run.name));
-                        return;
-                    }
-                }
+fn push_run_header(out: &mut String, run: &ProviderRun) -> bool {
+    match &run.result {
+        Ok(report) => match max_percent(report) {
+            Some(pct) => {
+                push_icon_header(out, &run.name, &run.icon_label, run.icon_color, pct);
+                true
             }
+            None => false,
+        },
+        Err(reason) => {
+            push_error_icon_header(out, run, reason);
+            true
         }
-        // Pinned id doesn't match any run, or that run errored (stale
-        // pin, e.g. a removed provider config) -- fall through.
     }
+}
 
-    // No valid pin: one icon line per provider (SwiftBar cycles
-    // between full static icons rather than between name-only/
-    // percent-only text halves).
+fn render_header(out: &mut String, pinned: Option<&str>, runs: &[ProviderRun]) {
+    if let Some(run) = pinned.and_then(|id| runs.iter().find(|r| r.id == id)) {
+        if push_run_header(out, run) {
+            return;
+        }
+        // Pinned run has no numeric usage: show its name.
+        out.push_str(&format!("{}\n", run.name));
+        return;
+    }
+    // No valid pin (none, or a stale id for a removed provider): one
+    // icon line per provider, errored ones included, so SwiftBar
+    // cycles between full static icons.
     let mut any = false;
     for run in runs {
-        if let Ok(report) = &run.result {
-            if let Some(pct) = max_percent(report) {
-                push_icon_header(out, &run.name, &run.icon_label, run.icon_color, pct);
-                any = true;
-            }
-        }
+        any |= push_run_header(out, run);
     }
     if !any {
         out.push_str("Agent Usage\n");
@@ -259,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn errored_pin_falls_back_to_cycling_not_blank() {
+    fn errored_pin_shows_error_icon() {
         let runs = vec![
             run("codex", "Codex", "CDX", Err("timed out".to_string())),
             run("copilot", "GitHub Copilot", "GHC", Ok(sample_report(10.0))),
@@ -267,7 +293,30 @@ mod tests {
         let out = render("/usr/local/bin/albert-usage", Some("codex"), &runs);
         let header: Vec<&str> = out.lines().take_while(|l| *l != "---").collect();
         assert_eq!(header.len(), 1);
-        assert!(header[0].contains("alt=\"GitHub Copilot 10%\""));
+        assert!(header[0].starts_with(" |"));
+        assert!(header[0].contains("image="));
+        assert!(header[0].contains("alt=\"Codex error: timed out\""));
+    }
+
+    #[test]
+    fn cycling_includes_errored_providers() {
+        let runs = vec![
+            run("codex", "Codex", "CDX", Err("timed out".to_string())),
+            run("copilot", "GitHub Copilot", "GHC", Ok(sample_report(10.0))),
+        ];
+        let out = render("/usr/local/bin/albert-usage", None, &runs);
+        let header: Vec<&str> = out.lines().take_while(|l| *l != "---").collect();
+        assert_eq!(header.len(), 2);
+        assert!(header[0].contains("alt=\"Codex error: timed out\""));
+        assert!(header[1].contains("alt=\"GitHub Copilot 10%\""));
+    }
+
+    #[test]
+    fn all_errored_still_shows_icons_not_plain_text() {
+        let runs = vec![run("codex", "Codex", "CDX", Err("x".to_string()))];
+        let out = render("/usr/local/bin/albert-usage", None, &runs);
+        assert!(!out.starts_with("Agent Usage"));
+        assert!(out.starts_with(" | image="));
     }
 
     #[test]
