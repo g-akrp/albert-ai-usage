@@ -47,6 +47,13 @@ fn percent_color(pct: f32) -> &'static str {
 /// identity at a glance. The percent row is the same red/orange/green
 /// severity color the dropdown's per-window rows use -- state at a
 /// glance, right in the icon, not just on click.
+///
+/// No title text: an empty string before `|` so only the icon shows
+/// in the menu bar (SwiftBar prints title text beside the image when
+/// it isn't empty -- confirmed live, the earlier version left
+/// "{name} {pct}" showing next to the icon, duplicating what the icon
+/// already renders). `name`/`pct` still go into `alt=` for
+/// accessibility (VoiceOver etc.), which isn't visibly rendered.
 fn push_icon_header(out: &mut String, name: &str, icon_label: &str, icon_color: [u8; 3], pct: f32) {
     let pct_text = format!("{pct:.0}%");
     let png = crate::icon::render_two_line_png(
@@ -57,7 +64,7 @@ fn push_icon_header(out: &mut String, name: &str, icon_label: &str, icon_color: 
         2,
     );
     let b64 = crate::icon::to_base64(&png);
-    out.push_str(&format!("{name} {pct_text} | image={b64}\n"));
+    out.push_str(&format!(" | image={b64} alt=\"{name} {pct_text}\"\n"));
 }
 
 /// One provider's run: its config id, full display name (dropdown),
@@ -219,8 +226,9 @@ mod tests {
         let out = render("/usr/local/bin/albert-usage", Some("codex"), &runs);
         let header: Vec<&str> = out.lines().take_while(|l| *l != "---").collect();
         assert_eq!(header.len(), 1); // one static icon line, not cycling
-        assert!(header[0].starts_with("Codex 45%"));
+        assert!(header[0].starts_with(" |")); // no title text beside the icon
         assert!(header[0].contains("image="));
+        assert!(header[0].contains("alt=\"Codex 45%\""));
     }
 
     #[test]
@@ -245,8 +253,9 @@ mod tests {
         );
         let header: Vec<&str> = out.lines().take_while(|l| *l != "---").collect();
         assert_eq!(header.len(), 1);
-        assert!(header[0].starts_with("Codex 45%"));
+        assert!(header[0].starts_with(" |"));
         assert!(header[0].contains("image="));
+        assert!(header[0].contains("alt=\"Codex 45%\""));
     }
 
     #[test]
@@ -258,7 +267,7 @@ mod tests {
         let out = render("/usr/local/bin/albert-usage", Some("codex"), &runs);
         let header: Vec<&str> = out.lines().take_while(|l| *l != "---").collect();
         assert_eq!(header.len(), 1);
-        assert!(header[0].starts_with("GitHub Copilot 10%"));
+        assert!(header[0].contains("alt=\"GitHub Copilot 10%\""));
     }
 
     #[test]
