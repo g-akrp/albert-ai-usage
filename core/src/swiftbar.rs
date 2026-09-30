@@ -35,6 +35,18 @@ fn percent_color(pct: f32) -> &'static str {
     }
 }
 
+/// Two separate header lines -- name, then percent -- so SwiftBar
+/// cycles them ("Codex" then "47%") instead of one long combined
+/// line. Both lines are small (`size=9`) to read as a compact
+/// two-line label rather than a normal-sized menu title.
+fn push_two_line_header(out: &mut String, name: &str, pct: f32) {
+    out.push_str(&format!("{name} | size=9\n"));
+    out.push_str(&format!(
+        "{pct:.0}% | size=9 color={}\n",
+        percent_color(pct)
+    ));
+}
+
 /// One provider's run: its config id, display name, and result.
 pub type ProviderRun = (String, String, Result<Report, String>);
 
@@ -58,10 +70,7 @@ fn render_header(out: &mut String, pinned: Option<&str>, runs: &[ProviderRun]) {
         if let Some((_, name, Ok(report))) = runs.iter().find(|(id, _, _)| id == pinned_id) {
             match max_percent(report) {
                 Some(pct) => {
-                    out.push_str(&format!(
-                        "{name} {pct:.0}% | color={}\n",
-                        percent_color(pct)
-                    ));
+                    push_two_line_header(out, name, pct);
                     return;
                 }
                 None => {
@@ -74,16 +83,16 @@ fn render_header(out: &mut String, pinned: Option<&str>, runs: &[ProviderRun]) {
         // provider config) -- fall through to the cycling default.
     }
 
-    // No valid pin: cycle every provider's headline number as
-    // separate header lines (SwiftBar cycles multiple header lines).
+    // No valid pin: cycle every provider's name/percent as separate
+    // header lines (SwiftBar cycles multiple header lines -- there's
+    // no documented way to make two lines stack as one static label,
+    // per SwiftBar's own plugin API docs; this is the closest native
+    // behavior: "Codex" then "47%" alternate every couple seconds).
     let mut any = false;
     for (_, name, result) in runs {
         if let Ok(report) = result {
             if let Some(pct) = max_percent(report) {
-                out.push_str(&format!(
-                    "{name} {pct:.0}% | color={}\n",
-                    percent_color(pct)
-                ));
+                push_two_line_header(out, name, pct);
                 any = true;
             }
         }
@@ -191,8 +200,10 @@ mod tests {
             ),
         ];
         let out = render("/usr/local/bin/albert-usage", Some("codex"), &runs);
-        let header = out.lines().next().unwrap();
-        assert!(header.starts_with("Codex 45%"));
+        let header: Vec<&str> = out.lines().take_while(|l| *l != "---").collect();
+        assert_eq!(header.len(), 2);
+        assert!(header[0].starts_with("Codex"));
+        assert!(header[1].starts_with("45%"));
     }
 
     #[test]
@@ -211,7 +222,8 @@ mod tests {
         ];
         let out = render("/usr/local/bin/albert-usage", None, &runs);
         let header: Vec<&str> = out.lines().take_while(|l| *l != "---").collect();
-        assert_eq!(header.len(), 2);
+        // Two providers, name + percent line each = 4 header lines.
+        assert_eq!(header.len(), 4);
     }
 
     #[test]
@@ -226,7 +238,8 @@ mod tests {
             Some("removed-provider"),
             &runs,
         );
-        assert!(out.starts_with("Codex 45%"));
+        let header: Vec<&str> = out.lines().take_while(|l| *l != "---").collect();
+        assert_eq!(header, vec!["Codex | size=9", "45% | size=9 color=green"]);
     }
 
     #[test]
