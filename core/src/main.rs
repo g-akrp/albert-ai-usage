@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use albert_ai_usage_core::config::{load_config, run_provider};
-use albert_ai_usage_core::{format_report, swiftbar};
+use albert_ai_usage_core::{format_report, icon, swiftbar};
 
 fn providers_dir() -> PathBuf {
     std::env::var("ALBERT_PROVIDERS_DIR")
@@ -60,9 +60,50 @@ fn run_all_providers() -> Vec<swiftbar::ProviderRun> {
             let json = fs::read_to_string(&path).ok()?;
             let config = load_config(&json).ok()?;
             let result = run_provider(&config);
-            Some((config.id, config.name, result))
+            let icon_label = config
+                .icon_label
+                .clone()
+                .unwrap_or_else(|| config.id.chars().take(3).collect::<String>().to_uppercase());
+            Some(swiftbar::ProviderRun {
+                id: config.id,
+                name: config.name,
+                icon_label,
+                result,
+            })
         })
         .collect()
+}
+
+/// Renders each provider's real, live icon at a larger preview scale
+/// (8x instead of the 2x used for the actual menu bar) and saves it
+/// as a PNG so it can be looked at directly -- `make icon-preview`.
+fn icon_preview() {
+    let dir = std::env::var("ALBERT_ICON_PREVIEW_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/tmp/albert-icon-preview"));
+    if let Err(e) = fs::create_dir_all(&dir) {
+        eprintln!("could not create {dir:?}: {e}");
+        std::process::exit(1);
+    }
+
+    for run in run_all_providers() {
+        let Ok(report) = run.result else {
+            eprintln!("{}: skipped (provider errored)", run.id);
+            continue;
+        };
+        let Some(pct) = swiftbar::max_percent(&report) else {
+            eprintln!("{}: skipped (no numeric usage)", run.id);
+            continue;
+        };
+        let pct_text = format!("{pct:.0}%");
+        let png = icon::render_two_line_png(&run.icon_label, &pct_text, [0, 150, 0], 8);
+        let path = dir.join(format!("{}.png", run.id));
+        if let Err(e) = fs::write(&path, &png) {
+            eprintln!("{}: could not write {path:?}: {e}", run.id);
+            continue;
+        }
+        println!("{path:?}");
+    }
 }
 
 fn main() {
@@ -80,6 +121,11 @@ fn main() {
         return;
     }
 
+    if args.iter().any(|a| a == "--icon-preview") {
+        icon_preview();
+        return;
+    }
+
     if args.iter().any(|a| a == "--swiftbar") {
         let binary_path = std::env::current_exe()
             .ok()
@@ -93,7 +139,7 @@ fn main() {
         return;
     }
 
-    for (id, name, result) in run_all_providers() {
-        println!("{}", format_report(&id, &name, &result));
+    for run in run_all_providers() {
+        println!("{}", format_report(&run.id, &run.name, &run.result));
     }
 }

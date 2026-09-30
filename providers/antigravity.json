@@ -3,6 +3,7 @@
   "id": "antigravity",
   "revision": 1,
   "name": "Antigravity",
+  "iconLabel": "AGY",
   "source": {
     "type": "command",
     "executable": "agy",

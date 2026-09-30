@@ -1,4 +1,4 @@
-.PHONY: run test fmt lint check build clean swiftbar-install
+.PHONY: run test fmt lint check build clean swiftbar-install icon-preview
 
 MANIFEST = core/Cargo.toml
 
@@ -38,3 +38,11 @@ swiftbar-install: build
 	mkdir -p "$$dir"; \
 	ln -sf "$$(pwd)/swiftbar/albert-usage.30s.sh" "$$dir/"; \
 	echo "Linked into $$dir -- refresh SwiftBar (or wait for the 30s interval)."
+
+# Renders each live provider's real icon at a large, easy-to-inspect
+# scale (not the small 2x used in the actual menu bar) and opens the
+# result -- a repeatable way to visually check the icon looks right
+# without squinting at the real status bar.
+icon-preview: build
+	@cargo run --manifest-path $(MANIFEST) --quiet -- --icon-preview
+	@open /tmp/albert-icon-preview/*.png 2>/dev/null || true

@@ -3,6 +3,7 @@
   "id": "claude",
   "revision": 1,
   "name": "Claude Code",
+  "iconLabel": "CLD",
   "source": {
     "type": "stdio",
     "executable": "claude",

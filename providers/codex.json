@@ -3,6 +3,7 @@
   "id": "codex",
   "revision": 1,
   "name": "Codex",
+  "iconLabel": "CDX",
   "source": {
     "type": "stdio",
     "executable": "codex",

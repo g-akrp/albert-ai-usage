@@ -3,6 +3,7 @@
   "id": "copilot",
   "revision": 1,
   "name": "GitHub Copilot",
+  "iconLabel": "GHC",
   "source": {
     "type": "command",
     "executable": "gh",

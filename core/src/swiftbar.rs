@@ -35,26 +35,33 @@ fn percent_color(pct: f32) -> &'static str {
     }
 }
 
-/// A genuinely static two-row icon (name / percent, both visible at
-/// once) via SwiftBar's `image=` param -- not two cycling text lines.
-/// SwiftBar's own text titles can't stack two rows (confirmed against
-/// its plugin API docs); rendering a small bitmap is the real way to
-/// get this, since no font file could be fetched to embed, `icon.rs`
-/// draws it with a tiny hand-authored pixel font.
-fn push_icon_header(out: &mut String, name: &str, pct: f32) {
+/// A genuinely static, roughly square two-row icon (short label /
+/// percent, both visible at once) via SwiftBar's `image=` param --
+/// not two cycling text lines. SwiftBar's own text titles can't stack
+/// two rows (confirmed against its plugin API docs); rendering a
+/// small bitmap is the real way to get this. `icon_label` (not the
+/// full display name -- too long to stay square) is drawn with a tiny
+/// hand-authored pixel font in `icon.rs`.
+fn push_icon_header(out: &mut String, name: &str, icon_label: &str, pct: f32) {
     let pct_text = format!("{pct:.0}%");
     let color = match percent_color(pct) {
         "red" => [200, 0, 0],
         "orange" => [200, 120, 0],
         _ => [0, 130, 0],
     };
-    let png = crate::icon::render_two_line_png(name, &pct_text, color, 2);
+    let png = crate::icon::render_two_line_png(icon_label, &pct_text, color, 2);
     let b64 = crate::icon::to_base64(&png);
     out.push_str(&format!("{name} {pct_text} | image={b64}\n"));
 }
 
-/// One provider's run: its config id, display name, and result.
-pub type ProviderRun = (String, String, Result<Report, String>);
+/// One provider's run: its config id, full display name (dropdown),
+/// short icon label (menu-bar icon top row), and result.
+pub struct ProviderRun {
+    pub id: String,
+    pub name: String,
+    pub icon_label: String,
+    pub result: Result<Report, String>,
+}
 
 /// Renders the full SwiftBar plugin text. `binary_path` must be this
 /// binary's own absolute path (SwiftBar's `bash=` action needs an
@@ -64,8 +71,8 @@ pub fn render(binary_path: &str, pinned: Option<&str>, runs: &[ProviderRun]) -> 
 
     render_header(&mut out, pinned, runs);
     out.push_str("---\n");
-    for (id, name, result) in runs {
-        render_provider(&mut out, binary_path, id, name, result, pinned == Some(id));
+    for run in runs {
+        render_provider(&mut out, binary_path, run, pinned == Some(run.id.as_str()));
     }
 
     out
@@ -73,32 +80,32 @@ pub fn render(binary_path: &str, pinned: Option<&str>, runs: &[ProviderRun]) -> 
 
 fn render_header(out: &mut String, pinned: Option<&str>, runs: &[ProviderRun]) {
     if let Some(pinned_id) = pinned {
-        if let Some((_, name, Ok(report))) = runs.iter().find(|(id, _, _)| id == pinned_id) {
-            match max_percent(report) {
-                Some(pct) => {
-                    push_icon_header(out, name, pct);
-                    return;
-                }
-                None => {
-                    out.push_str(&format!("{name}\n"));
-                    return;
+        if let Some(run) = runs.iter().find(|r| r.id == pinned_id) {
+            if let Ok(report) = &run.result {
+                match max_percent(report) {
+                    Some(pct) => {
+                        push_icon_header(out, &run.name, &run.icon_label, pct);
+                        return;
+                    }
+                    None => {
+                        out.push_str(&format!("{}\n", run.name));
+                        return;
+                    }
                 }
             }
         }
-        // Pinned id doesn't match any run (stale pin, e.g. a removed
-        // provider config) -- fall through to the cycling default.
+        // Pinned id doesn't match any run, or that run errored (stale
+        // pin, e.g. a removed provider config) -- fall through.
     }
 
-    // No valid pin: cycle every provider's name/percent as separate
-    // header lines (SwiftBar cycles multiple header lines -- there's
-    // no documented way to make two lines stack as one static label,
-    // per SwiftBar's own plugin API docs; this is the closest native
-    // behavior: "Codex" then "47%" alternate every couple seconds).
+    // No valid pin: one icon line per provider (SwiftBar cycles
+    // between full static icons rather than between name-only/
+    // percent-only text halves).
     let mut any = false;
-    for (_, name, result) in runs {
-        if let Ok(report) = result {
+    for run in runs {
+        if let Ok(report) = &run.result {
             if let Some(pct) = max_percent(report) {
-                push_icon_header(out, name, pct);
+                push_icon_header(out, &run.name, &run.icon_label, pct);
                 any = true;
             }
         }
@@ -108,22 +115,17 @@ fn render_header(out: &mut String, pinned: Option<&str>, runs: &[ProviderRun]) {
     }
 }
 
-fn render_provider(
-    out: &mut String,
-    binary_path: &str,
-    id: &str,
-    name: &str,
-    result: &Result<Report, String>,
-    is_pinned: bool,
-) {
+fn render_provider(out: &mut String, binary_path: &str, run: &ProviderRun, is_pinned: bool) {
     let mark = if is_pinned { "\u{2605}" } else { "\u{2606}" }; // ★ / ☆
-    match result {
+    let name = &run.name;
+    match &run.result {
         Ok(report) => {
             let plan = report
                 .plan
                 .as_deref()
                 .map(|p| format!(" ({p})"))
                 .unwrap_or_default();
+            let id = &run.id;
             out.push_str(&format!(
                 "{mark} {name}{plan} | md=true bash={binary_path} param1=--pin param2={id} terminal=false refresh=true\n"
             ));
@@ -178,6 +180,15 @@ mod tests {
         }
     }
 
+    fn run(id: &str, name: &str, icon_label: &str, result: Result<Report, String>) -> ProviderRun {
+        ProviderRun {
+            id: id.to_string(),
+            name: name.to_string(),
+            icon_label: icon_label.to_string(),
+            result,
+        }
+    }
+
     #[test]
     fn max_percent_picks_the_highest_window() {
         let mut report = sample_report(10.0);
@@ -194,16 +205,8 @@ mod tests {
     #[test]
     fn header_shows_pinned_provider_when_valid() {
         let runs = vec![
-            (
-                "codex".to_string(),
-                "Codex".to_string(),
-                Ok(sample_report(45.0)),
-            ),
-            (
-                "copilot".to_string(),
-                "GitHub Copilot".to_string(),
-                Ok(sample_report(10.0)),
-            ),
+            run("codex", "Codex", "CDX", Ok(sample_report(45.0))),
+            run("copilot", "GitHub Copilot", "GHC", Ok(sample_report(10.0))),
         ];
         let out = render("/usr/local/bin/albert-usage", Some("codex"), &runs);
         let header: Vec<&str> = out.lines().take_while(|l| *l != "---").collect();
@@ -215,16 +218,8 @@ mod tests {
     #[test]
     fn header_cycles_all_providers_when_nothing_pinned() {
         let runs = vec![
-            (
-                "codex".to_string(),
-                "Codex".to_string(),
-                Ok(sample_report(45.0)),
-            ),
-            (
-                "copilot".to_string(),
-                "GitHub Copilot".to_string(),
-                Ok(sample_report(10.0)),
-            ),
+            run("codex", "Codex", "CDX", Ok(sample_report(45.0))),
+            run("copilot", "GitHub Copilot", "GHC", Ok(sample_report(10.0))),
         ];
         let out = render("/usr/local/bin/albert-usage", None, &runs);
         let header: Vec<&str> = out.lines().take_while(|l| *l != "---").collect();
@@ -234,11 +229,7 @@ mod tests {
 
     #[test]
     fn stale_pin_falls_back_to_cycling() {
-        let runs = vec![(
-            "codex".to_string(),
-            "Codex".to_string(),
-            Ok(sample_report(45.0)),
-        )];
+        let runs = vec![run("codex", "Codex", "CDX", Ok(sample_report(45.0)))];
         let out = render(
             "/usr/local/bin/albert-usage",
             Some("removed-provider"),
@@ -251,12 +242,20 @@ mod tests {
     }
 
     #[test]
+    fn errored_pin_falls_back_to_cycling_not_blank() {
+        let runs = vec![
+            run("codex", "Codex", "CDX", Err("timed out".to_string())),
+            run("copilot", "GitHub Copilot", "GHC", Ok(sample_report(10.0))),
+        ];
+        let out = render("/usr/local/bin/albert-usage", Some("codex"), &runs);
+        let header: Vec<&str> = out.lines().take_while(|l| *l != "---").collect();
+        assert_eq!(header.len(), 1);
+        assert!(header[0].starts_with("GitHub Copilot 10%"));
+    }
+
+    #[test]
     fn provider_title_line_has_pin_action_with_its_own_id() {
-        let runs = vec![(
-            "codex".to_string(),
-            "Codex".to_string(),
-            Ok(sample_report(45.0)),
-        )];
+        let runs = vec![run("codex", "Codex", "CDX", Ok(sample_report(45.0)))];
         let out = render("/usr/local/bin/albert-usage", None, &runs);
         assert!(out.contains("bash=/usr/local/bin/albert-usage param1=--pin param2=codex"));
         assert!(out.contains("terminal=false refresh=true"));
@@ -264,22 +263,14 @@ mod tests {
 
     #[test]
     fn pinned_provider_shows_filled_star() {
-        let runs = vec![(
-            "codex".to_string(),
-            "Codex".to_string(),
-            Ok(sample_report(45.0)),
-        )];
+        let runs = vec![run("codex", "Codex", "CDX", Ok(sample_report(45.0)))];
         let out = render("/usr/local/bin/albert-usage", Some("codex"), &runs);
         assert!(out.contains("\u{2605} Codex"));
     }
 
     #[test]
     fn error_row_shows_reason_no_pin_action() {
-        let runs = vec![(
-            "codex".to_string(),
-            "Codex".to_string(),
-            Err("timed out".to_string()),
-        )];
+        let runs = vec![run("codex", "Codex", "CDX", Err("timed out".to_string()))];
         let out = render("/usr/local/bin/albert-usage", None, &runs);
         assert!(out.contains("Codex — Error: timed out"));
         assert!(!out.contains("bash="));

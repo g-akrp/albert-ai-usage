@@ -19,6 +19,15 @@ pub struct ProviderConfig {
     pub id: String,
     pub revision: u32,
     pub name: String,
+    /// Project extension beyond the base schema (not in Maestri's
+    /// shipped examples): a short label (ideally 3 chars) for the
+    /// square menu-bar icon's top row -- `name` is the full display
+    /// name used in the dropdown, which is usually too long to fit
+    /// there. Falls back to the first 3 characters of `id`, uppercased,
+    /// when not set.
+    #[serde(default)]
+    #[serde(rename = "iconLabel")]
+    pub icon_label: Option<String>,
     pub source: Source,
     pub map: Map,
     #[serde(default)]
