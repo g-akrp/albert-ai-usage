@@ -35,16 +35,22 @@ fn percent_color(pct: f32) -> &'static str {
     }
 }
 
-/// Two separate header lines -- name, then percent -- so SwiftBar
-/// cycles them ("Codex" then "47%") instead of one long combined
-/// line. Both lines are small (`size=9`) to read as a compact
-/// two-line label rather than a normal-sized menu title.
-fn push_two_line_header(out: &mut String, name: &str, pct: f32) {
-    out.push_str(&format!("{name} | size=9\n"));
-    out.push_str(&format!(
-        "{pct:.0}% | size=9 color={}\n",
-        percent_color(pct)
-    ));
+/// A genuinely static two-row icon (name / percent, both visible at
+/// once) via SwiftBar's `image=` param -- not two cycling text lines.
+/// SwiftBar's own text titles can't stack two rows (confirmed against
+/// its plugin API docs); rendering a small bitmap is the real way to
+/// get this, since no font file could be fetched to embed, `icon.rs`
+/// draws it with a tiny hand-authored pixel font.
+fn push_icon_header(out: &mut String, name: &str, pct: f32) {
+    let pct_text = format!("{pct:.0}%");
+    let color = match percent_color(pct) {
+        "red" => [200, 0, 0],
+        "orange" => [200, 120, 0],
+        _ => [0, 130, 0],
+    };
+    let png = crate::icon::render_two_line_png(name, &pct_text, color, 2);
+    let b64 = crate::icon::to_base64(&png);
+    out.push_str(&format!("{name} {pct_text} | image={b64}\n"));
 }
 
 /// One provider's run: its config id, display name, and result.
@@ -70,7 +76,7 @@ fn render_header(out: &mut String, pinned: Option<&str>, runs: &[ProviderRun]) {
         if let Some((_, name, Ok(report))) = runs.iter().find(|(id, _, _)| id == pinned_id) {
             match max_percent(report) {
                 Some(pct) => {
-                    push_two_line_header(out, name, pct);
+                    push_icon_header(out, name, pct);
                     return;
                 }
                 None => {
@@ -92,7 +98,7 @@ fn render_header(out: &mut String, pinned: Option<&str>, runs: &[ProviderRun]) {
     for (_, name, result) in runs {
         if let Ok(report) = result {
             if let Some(pct) = max_percent(report) {
-                push_two_line_header(out, name, pct);
+                push_icon_header(out, name, pct);
                 any = true;
             }
         }
@@ -201,9 +207,9 @@ mod tests {
         ];
         let out = render("/usr/local/bin/albert-usage", Some("codex"), &runs);
         let header: Vec<&str> = out.lines().take_while(|l| *l != "---").collect();
-        assert_eq!(header.len(), 2);
-        assert!(header[0].starts_with("Codex"));
-        assert!(header[1].starts_with("45%"));
+        assert_eq!(header.len(), 1); // one static icon line, not cycling
+        assert!(header[0].starts_with("Codex 45%"));
+        assert!(header[0].contains("image="));
     }
 
     #[test]
@@ -222,8 +228,8 @@ mod tests {
         ];
         let out = render("/usr/local/bin/albert-usage", None, &runs);
         let header: Vec<&str> = out.lines().take_while(|l| *l != "---").collect();
-        // Two providers, name + percent line each = 4 header lines.
-        assert_eq!(header.len(), 4);
+        // One icon line per provider -- SwiftBar cycles between them.
+        assert_eq!(header.len(), 2);
     }
 
     #[test]
@@ -239,7 +245,9 @@ mod tests {
             &runs,
         );
         let header: Vec<&str> = out.lines().take_while(|l| *l != "---").collect();
-        assert_eq!(header, vec!["Codex | size=9", "45% | size=9 color=green"]);
+        assert_eq!(header.len(), 1);
+        assert!(header[0].starts_with("Codex 45%"));
+        assert!(header[0].contains("image="));
     }
 
     #[test]
