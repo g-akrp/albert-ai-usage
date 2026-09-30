@@ -1,4 +1,4 @@
-.PHONY: run test fmt lint check build clean
+.PHONY: run test fmt lint check build clean swiftbar-install
 
 MANIFEST = core/Cargo.toml
 
@@ -24,3 +24,17 @@ build:
 
 clean:
 	cargo clean --manifest-path $(MANIFEST)
+
+# Builds the release binary, then symlinks swiftbar/albert-usage.30s.sh
+# into SwiftBar's own configured Plugin Folder (its PluginDirectory
+# preference, com.ameba.SwiftBar -- read from SwiftBar itself, not
+# guessed or hardcoded). Re-run after moving/renaming the repo.
+swiftbar-install: build
+	@dir=$$(defaults read com.ameba.SwiftBar PluginDirectory 2>/dev/null); \
+	if [ -z "$$dir" ]; then \
+		echo "SwiftBar's Plugin Folder isn't set. Open SwiftBar > Preferences and set one, then re-run this."; \
+		exit 1; \
+	fi; \
+	mkdir -p "$$dir"; \
+	ln -sf "$$(pwd)/swiftbar/albert-usage.30s.sh" "$$dir/"; \
+	echo "Linked into $$dir -- refresh SwiftBar (or wait for the 30s interval)."
