@@ -4,6 +4,7 @@
   "revision": 1,
   "name": "Claude Code",
   "iconLabel": "CLD",
+  "iconColor": "D97757",
   "source": {
     "type": "stdio",
     "executable": "claude",

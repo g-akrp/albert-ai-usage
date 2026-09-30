@@ -28,6 +28,14 @@ pub struct ProviderConfig {
     #[serde(default)]
     #[serde(rename = "iconLabel")]
     pub icon_label: Option<String>,
+    /// Project extension: the provider's own brand color, hex
+    /// `"RRGGBB"` (no `#`), for the icon -- identity at a glance, not
+    /// usage severity (the dropdown's per-window percent color still
+    /// does that). Falls back to a neutral gray when not set or not
+    /// valid hex.
+    #[serde(default)]
+    #[serde(rename = "iconColor")]
+    pub icon_color: Option<String>,
     pub source: Source,
     pub map: Map,
     #[serde(default)]

@@ -4,6 +4,7 @@
   "revision": 1,
   "name": "Antigravity",
   "iconLabel": "AGY",
+  "iconColor": "4285F4",
   "source": {
     "type": "command",
     "executable": "agy",

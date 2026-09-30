@@ -62,7 +62,7 @@ mod tests {
                     id: "primary".to_string(),
                     label: Some("Session".to_string()),
                     used_percent: Some(45.0),
-                    resets_at: Some("epoch 1790680997s".to_string()),
+                    resets_at: Some("Sep 29, 2026 6:23 PM".to_string()),
                     duration_seconds: Some(18000),
                 }],
             }],
@@ -70,7 +70,7 @@ mod tests {
         let out = format_report("codex", "Codex", &Ok(report));
         assert!(out.contains("plan: Plus"));
         assert!(out.contains("Session: 45%"));
-        assert!(out.contains("resets epoch 1790680997s"));
+        assert!(out.contains("resets Sep 29, 2026 6:23 PM"));
     }
 
     #[test]

@@ -4,6 +4,7 @@
   "revision": 1,
   "name": "Codex",
   "iconLabel": "CDX",
+  "iconColor": "10A37F",
   "source": {
     "type": "stdio",
     "executable": "codex",

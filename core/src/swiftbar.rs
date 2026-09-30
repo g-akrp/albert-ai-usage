@@ -42,24 +42,31 @@ fn percent_color(pct: f32) -> &'static str {
 /// small bitmap is the real way to get this. `icon_label` (not the
 /// full display name -- too long to stay square) is drawn with a tiny
 /// hand-authored pixel font in `icon.rs`.
-fn push_icon_header(out: &mut String, name: &str, icon_label: &str, pct: f32) {
+///
+/// The label row is the provider's own brand color (`icon_color`) --
+/// identity at a glance. The percent row is the same red/orange/green
+/// severity color the dropdown's per-window rows use -- state at a
+/// glance, right in the icon, not just on click.
+fn push_icon_header(out: &mut String, name: &str, icon_label: &str, icon_color: [u8; 3], pct: f32) {
     let pct_text = format!("{pct:.0}%");
-    let color = match percent_color(pct) {
-        "red" => [200, 0, 0],
-        "orange" => [200, 120, 0],
-        _ => [0, 130, 0],
-    };
-    let png = crate::icon::render_two_line_png(icon_label, &pct_text, color, 2);
+    let png = crate::icon::render_two_line_png(
+        icon_label,
+        &pct_text,
+        icon_color,
+        crate::icon::severity_rgb(pct),
+        2,
+    );
     let b64 = crate::icon::to_base64(&png);
     out.push_str(&format!("{name} {pct_text} | image={b64}\n"));
 }
 
 /// One provider's run: its config id, full display name (dropdown),
-/// short icon label (menu-bar icon top row), and result.
+/// short icon label and brand color (menu-bar icon), and result.
 pub struct ProviderRun {
     pub id: String,
     pub name: String,
     pub icon_label: String,
+    pub icon_color: [u8; 3],
     pub result: Result<Report, String>,
 }
 
@@ -84,7 +91,7 @@ fn render_header(out: &mut String, pinned: Option<&str>, runs: &[ProviderRun]) {
             if let Ok(report) = &run.result {
                 match max_percent(report) {
                     Some(pct) => {
-                        push_icon_header(out, &run.name, &run.icon_label, pct);
+                        push_icon_header(out, &run.name, &run.icon_label, run.icon_color, pct);
                         return;
                     }
                     None => {
@@ -105,7 +112,7 @@ fn render_header(out: &mut String, pinned: Option<&str>, runs: &[ProviderRun]) {
     for run in runs {
         if let Ok(report) = &run.result {
             if let Some(pct) = max_percent(report) {
-                push_icon_header(out, &run.name, &run.icon_label, pct);
+                push_icon_header(out, &run.name, &run.icon_label, run.icon_color, pct);
                 any = true;
             }
         }
@@ -185,6 +192,7 @@ mod tests {
             id: id.to_string(),
             name: name.to_string(),
             icon_label: icon_label.to_string(),
+            icon_color: [0, 130, 0], // arbitrary, color isn't under test here
             result,
         }
     }

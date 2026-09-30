@@ -64,10 +64,16 @@ fn run_all_providers() -> Vec<swiftbar::ProviderRun> {
                 .icon_label
                 .clone()
                 .unwrap_or_else(|| config.id.chars().take(3).collect::<String>().to_uppercase());
+            let icon_color = config
+                .icon_color
+                .as_deref()
+                .and_then(icon::parse_hex_color)
+                .unwrap_or([110, 110, 110]); // neutral gray fallback
             Some(swiftbar::ProviderRun {
                 id: config.id,
                 name: config.name,
                 icon_label,
+                icon_color,
                 result,
             })
         })
@@ -96,7 +102,13 @@ fn icon_preview() {
             continue;
         };
         let pct_text = format!("{pct:.0}%");
-        let png = icon::render_two_line_png(&run.icon_label, &pct_text, [0, 150, 0], 8);
+        let png = icon::render_two_line_png(
+            &run.icon_label,
+            &pct_text,
+            run.icon_color,
+            icon::severity_rgb(pct),
+            8,
+        );
         let path = dir.join(format!("{}.png", run.id));
         if let Err(e) = fs::write(&path, &png) {
             eprintln!("{}: could not write {path:?}: {e}", run.id);

@@ -11,6 +11,34 @@
 
 use image::{ImageEncoder, Rgba, RgbaImage};
 
+/// Parses a `"RRGGBB"` hex string (no `#`) into RGB bytes. `None` for
+/// anything else (wrong length, non-hex characters) -- callers fall
+/// back to a default rather than erroring, since this is a cosmetic
+/// setting, not something that should break a provider over a typo.
+pub fn parse_hex_color(hex: &str) -> Option<[u8; 3]> {
+    if hex.len() != 6 {
+        return None;
+    }
+    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+    Some([r, g, b])
+}
+
+/// Usage-severity RGB by threshold -- macOS system red/orange/green,
+/// the same threshold bands the dropdown's `color=red|orange|green`
+/// param uses (see `swiftbar::percent_color`), so the icon's value row
+/// and the dropdown's per-window rows always agree.
+pub fn severity_rgb(pct: f32) -> [u8; 3] {
+    if pct >= 90.0 {
+        [255, 59, 48] // systemRed
+    } else if pct >= 70.0 {
+        [255, 149, 0] // systemOrange
+    } else {
+        [52, 199, 89] // systemGreen
+    }
+}
+
 const GLYPH_W: u32 = 3;
 const GLYPH_H: u32 = 5;
 const SPACING: u32 = 1;
@@ -98,7 +126,19 @@ fn draw_line(
 /// the native 3x5 font is too thin (5px tall per row) to read as a
 /// real menu-bar icon; `scale: 2` gives a ~22px-tall image, close to
 /// a typical macOS status-item icon height.
-pub fn render_two_line_png(top: &str, bottom: &str, color: [u8; 3], scale: u32) -> Vec<u8> {
+///
+/// The two rows take separate colors on purpose: `top` (the provider
+/// label) is the provider's own brand color -- identity at a glance --
+/// while `bottom` (the usage value) is a state/severity color
+/// (red/orange/green by threshold), the same signal the dropdown's
+/// per-window percent uses.
+pub fn render_two_line_png(
+    top: &str,
+    bottom: &str,
+    top_color: [u8; 3],
+    bottom_color: [u8; 3],
+    scale: u32,
+) -> Vec<u8> {
     let top_w = line_width(top) * scale;
     let bottom_w = line_width(bottom) * scale;
     let width = top_w.max(bottom_w).max(1);
@@ -106,15 +146,16 @@ pub fn render_two_line_png(top: &str, bottom: &str, color: [u8; 3], scale: u32) 
     let height = GLYPH_H * scale * 2 + row_gap;
 
     let mut img = RgbaImage::new(width, height);
-    let color = Rgba([color[0], color[1], color[2], 255]);
+    let top_color = Rgba([top_color[0], top_color[1], top_color[2], 255]);
+    let bottom_color = Rgba([bottom_color[0], bottom_color[1], bottom_color[2], 255]);
 
-    draw_line(&mut img, top, (width - top_w) / 2, 0, color, scale);
+    draw_line(&mut img, top, (width - top_w) / 2, 0, top_color, scale);
     draw_line(
         &mut img,
         bottom,
         (width - bottom_w) / 2,
         GLYPH_H * scale + row_gap,
-        color,
+        bottom_color,
         scale,
     );
 
@@ -160,8 +201,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parses_valid_hex_color() {
+        assert_eq!(parse_hex_color("D97757"), Some([0xD9, 0x77, 0x57]));
+        assert_eq!(parse_hex_color("10A37F"), Some([0x10, 0xA3, 0x7F]));
+    }
+
+    #[test]
+    fn rejects_invalid_hex_color() {
+        assert_eq!(parse_hex_color("#D97757"), None); // has '#'
+        assert_eq!(parse_hex_color("D977"), None); // too short
+        assert_eq!(parse_hex_color("ZZZZZZ"), None); // not hex
+    }
+
+    #[test]
+    fn severity_rgb_matches_thresholds() {
+        assert_eq!(severity_rgb(45.0), [52, 199, 89]); // green
+        assert_eq!(severity_rgb(70.0), [255, 149, 0]); // orange
+        assert_eq!(severity_rgb(90.0), [255, 59, 48]); // red
+    }
+
+    #[test]
     fn renders_nonempty_png_with_correct_dimensions() {
-        let png = render_two_line_png("CODEX", "47%", [0, 128, 0], 2);
+        let png = render_two_line_png("CODEX", "47%", [0, 128, 0], [0, 128, 0], 2);
         assert!(!png.is_empty());
         // PNG magic bytes.
         assert_eq!(
@@ -172,9 +233,10 @@ mod tests {
 
     #[test]
     fn scale_two_doubles_pixel_dimensions() {
-        let decoded = image::load_from_memory(&render_two_line_png("A", "1", [0, 0, 0], 2))
-            .unwrap()
-            .to_rgba8();
+        let decoded =
+            image::load_from_memory(&render_two_line_png("A", "1", [0, 0, 0], [0, 0, 0], 2))
+                .unwrap()
+                .to_rgba8();
         // width: 1 glyph * 3px * scale 2 = 6; height: 5*2*2 rows + gap(2) = 22
         assert_eq!(decoded.width(), 6);
         assert_eq!(decoded.height(), 22);

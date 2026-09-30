@@ -4,6 +4,7 @@
   "revision": 1,
   "name": "GitHub Copilot",
   "iconLabel": "GHC",
+  "iconColor": "8957E5",
   "source": {
     "type": "command",
     "executable": "gh",

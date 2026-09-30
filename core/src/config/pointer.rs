@@ -3,7 +3,15 @@
 //! fraction / remainingFraction, iso8601 / epochSeconds / epochMillis,
 //! seconds / minutes / windowName).
 
+use chrono::{DateTime, Local, TimeZone};
 use serde_json::Value;
+
+/// Renders a UTC instant in the device's own local timezone (whatever
+/// the OS clock is set to), e.g. `"Sep 29, 2026 6:23 PM"` -- readable,
+/// not a raw ISO/epoch value.
+fn format_local(dt: DateTime<Local>) -> String {
+    dt.format("%b %-d, %Y %-I:%M %p").to_string()
+}
 
 /// Resolves a JSON Pointer like `/rate_limits/five_hour` against
 /// `root`. An empty string resolves to `root` itself (the whole
@@ -42,18 +50,36 @@ pub fn used_as_percent(value: &Value, as_: &crate::config::schema::UsedAs) -> Op
     })
 }
 
-/// Converts a raw JSON value per `resetsAt.as` into an ISO-8601-ish
-/// display string. `epochSeconds`/`epochMillis` are rendered as a
-/// plain UTC-offset-free label (`epoch <n>s`) -- full calendar
-/// formatting would need a date/time dependency this project doesn't
-/// carry yet; `iso8601` values are already human-readable and passed
-/// through as-is.
+/// Converts a raw JSON value per `resetsAt.as` into a readable,
+/// device-local-timezone display string (e.g. `"Oct 1, 2026 12:00 AM"`),
+/// not a raw ISO/epoch value. Falls back to the raw value as a string
+/// only if it fails to parse -- never errors, since a bad/unexpected
+/// reset value shouldn't break the rest of the report.
 pub fn resets_at_label(value: &Value, as_: &crate::config::schema::ResetAs) -> Option<String> {
     use crate::config::schema::ResetAs;
     match as_ {
-        ResetAs::Iso8601 => value.as_str().map(|s| s.to_string()),
-        ResetAs::EpochSeconds => value.as_i64().map(|n| format!("epoch {n}s")),
-        ResetAs::EpochMillis => value.as_i64().map(|n| format!("epoch {n}ms")),
+        ResetAs::Iso8601 => {
+            let raw = value.as_str()?;
+            let parsed =
+                DateTime::parse_from_rfc3339(raw).map(|dt| format_local(dt.with_timezone(&Local)));
+            Some(parsed.unwrap_or_else(|_| raw.to_string()))
+        }
+        ResetAs::EpochSeconds => {
+            let secs = value.as_i64()?;
+            Local
+                .timestamp_opt(secs, 0)
+                .single()
+                .map(format_local)
+                .or(Some(format!("epoch {secs}s")))
+        }
+        ResetAs::EpochMillis => {
+            let millis = value.as_i64()?;
+            Local
+                .timestamp_millis_opt(millis)
+                .single()
+                .map(format_local)
+                .or(Some(format!("epoch {millis}ms")))
+        }
     }
 }
 
@@ -140,19 +166,31 @@ mod tests {
     }
 
     #[test]
-    fn iso8601_passes_through() {
+    fn iso8601_renders_readable_local_datetime() {
+        let label = resets_at_label(&json!("2026-10-05T12:16:59Z"), &ResetAs::Iso8601).unwrap();
+        // Device-local timezone varies by machine, so assert on the
+        // readable shape (month name, year, 12-hour clock), not an
+        // exact string.
+        assert!(label.contains("2026"));
+        assert!(label.contains("Oct"));
+        assert!(label.contains("AM") || label.contains("PM"));
+        assert!(!label.contains('T')); // not the raw ISO string
+    }
+
+    #[test]
+    fn iso8601_falls_back_to_raw_on_unparseable_input() {
         assert_eq!(
-            resets_at_label(&json!("2026-10-05T12:16:59Z"), &ResetAs::Iso8601),
-            Some("2026-10-05T12:16:59Z".to_string())
+            resets_at_label(&json!("not-a-date"), &ResetAs::Iso8601),
+            Some("not-a-date".to_string())
         );
     }
 
     #[test]
-    fn epoch_seconds_labeled() {
-        assert_eq!(
-            resets_at_label(&json!(1790680997), &ResetAs::EpochSeconds),
-            Some("epoch 1790680997s".to_string())
-        );
+    fn epoch_seconds_renders_readable_local_datetime() {
+        let label = resets_at_label(&json!(1790680997), &ResetAs::EpochSeconds).unwrap();
+        assert!(label.contains("2026"));
+        assert!(label.contains("Sep"));
+        assert!(label.contains("AM") || label.contains("PM"));
     }
 
     #[test]
