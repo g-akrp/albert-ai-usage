@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "copilot",
+  "revision": 1,
+  "name": "GitHub Copilot",
+  "source": {
+    "type": "command",
+    "executable": "gh",
+    "args": ["api", "copilot_internal/user"],
+    "timeoutSeconds": 20,
+    "expect": {
+      "require": "/quota_snapshots"
+    }
+  },
+  "map": {
+    "plan": { "path": "/copilot_plan" },
+    "meters": [
+      {
+        "select": "/quota_snapshots/chat",
+        "id": "chat",
+        "label": { "text": "Chat" },
+        "windows": [
+          { "id": "current", "used": { "path": "/percent_remaining", "as": "remainingPercent" } }
+        ]
+      },
+      {
+        "select": "/quota_snapshots/completions",
+        "id": "completions",
+        "label": { "text": "Completions" },
+        "windows": [
+          { "id": "current", "used": { "path": "/percent_remaining", "as": "remainingPercent" } }
+        ]
+      },
+      {
+        "select": "/quota_snapshots/premium_interactions",
+        "id": "premium_interactions",
+        "label": { "text": "Premium Interactions" },
+        "windows": [
+          { "id": "current", "used": { "path": "/percent_remaining", "as": "remainingPercent" } }
+        ]
+      }
+    ]
+  },
+  "refresh": { "intervalSeconds": 300 }
+}

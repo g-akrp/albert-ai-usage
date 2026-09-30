@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "id": "codex",
+  "revision": 1,
+  "name": "Codex",
+  "source": {
+    "type": "stdio",
+    "executable": "codex",
+    "args": ["app-server", "--stdio"],
+    "timeoutSeconds": 20,
+    "steps": [
+      { "write": { "id": 1, "method": "initialize", "params": { "clientInfo": { "name": "maestri", "title": "Maestri", "version": "1" } } } },
+      { "await": { "match": [{ "path": "/id", "equals": 1 }], "error": "/error", "require": "/result" } },
+      { "write": { "method": "initialized" } },
+      { "write": { "id": 2, "method": "account/rateLimits/read", "params": { "excludeResetCreditDetails": true } } },
+      { "await": { "match": [{ "path": "/id", "equals": 2 }], "error": "/error", "require": "/result", "capture": "limits" } }
+    ],
+    "output": "limits"
+  },
+  "map": {
+    "root": "/result",
+    "plan": {
+      "path": "/rateLimits/planType",
+      "names": {
+        "prolite": "Pro Lite",
+        "self_serve_business_prolite": "Business Pro Lite",
+        "self_serve_business_usage_based": "Business",
+        "enterprise_cbp_automation": "Enterprise",
+        "enterprise_cbp_usage_based": "Enterprise",
+        "ent26": "Enterprise",
+        "edu_plus": "Edu Plus",
+        "edu_pro": "Edu Pro"
+      }
+    },
+    "access": { "path": "/ordinaryUsageAllowed" },
+    "meters": [
+      {
+        "select": "/rateLimits",
+        "id": { "path": "/limitId" },
+        "label": { "path": "/limitName", "fallback": { "text": "Codex" } },
+        "plan": { "path": "/planType" },
+        "limitReachedReason": { "path": "/rateLimitReachedType" },
+        "windows": [
+          {
+            "id": "primary",
+            "select": "/primary",
+            "used": { "path": "/usedPercent", "as": "percent" },
+            "resetsAt": { "path": "/resetsAt", "as": "epochSeconds" },
+            "duration": { "path": "/windowDurationMins", "as": "minutes" }
+          },
+          {
+            "id": "secondary",
+            "select": "/secondary",
+            "used": { "path": "/usedPercent", "as": "percent" },
+            "resetsAt": { "path": "/resetsAt", "as": "epochSeconds" },
+            "duration": { "path": "/windowDurationMins", "as": "minutes" }
+          }
+        ]
+      },
+      {
+        "eachEntry": "/rateLimitsByLimitId",
+        "id": { "entryKey": true },
+        "label": { "path": "/limitName", "fallback": { "text": "Codex" } },
+        "plan": { "path": "/planType" },
+        "limitReachedReason": { "path": "/rateLimitReachedType" },
+        "windows": [
+          {
+            "id": "primary",
+            "select": "/primary",
+            "used": { "path": "/usedPercent", "as": "percent" },
+            "resetsAt": { "path": "/resetsAt", "as": "epochSeconds" },
+            "duration": { "path": "/windowDurationMins", "as": "minutes" }
+          },
+          {
+            "id": "secondary",
+            "select": "/secondary",
+            "used": { "path": "/usedPercent", "as": "percent" },
+            "resetsAt": { "path": "/resetsAt", "as": "epochSeconds" },
+            "duration": { "path": "/windowDurationMins", "as": "minutes" }
+          }
+        ]
+      }
+    ]
+  },
+  "refresh": { "intervalSeconds": 300 }
+}

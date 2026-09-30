@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "id": "codex",
+  "revision": 1,
+  "name": "Codex",
+  "source": {
+    "type": "stdio",
+    "executable": "codex",
+    "args": ["app-server", "--stdio"],
+    "timeoutSeconds": 20,
+    "steps": [
+      { "write": { "id": 1, "method": "initialize", "params": { "clientInfo": { "name": "albert-ai-usage", "version": "1" } } } },
+      { "await": { "match": [{ "path": "/id", "equals": 1 }], "error": "/error", "require": "/result" } },
+      { "write": { "id": 2, "method": "account/rateLimits/read", "params": { "excludeResetCreditDetails": true } } },
+      { "await": { "match": [{ "path": "/id", "equals": 2 }], "error": "/error", "require": "/result", "capture": "limits" } }
+    ],
+    "output": "limits"
+  },
+  "map": {
+    "root": "/result",
+    "plan": { "path": "/rateLimits/planType" },
+    "access": { "path": "/ordinaryUsageAllowed" },
+    "meters": [
+      {
+        "select": "/rateLimits",
+        "id": { "path": "/limitId" },
+        "label": { "path": "/limitName", "fallback": { "text": "Codex" } },
+        "windows": [
+          {
+            "id": "primary",
+            "select": "/primary",
+            "label": { "key": "session" },
+            "used": { "path": "/usedPercent", "as": "percent" },
+            "resetsAt": { "path": "/resetsAt", "as": "epochSeconds" },
+            "duration": { "path": "/windowDurationMins", "as": "minutes" }
+          },
+          {
+            "id": "secondary",
+            "select": "/secondary",
+            "label": { "key": "weekly" },
+            "used": { "path": "/usedPercent", "as": "percent" },
+            "resetsAt": { "path": "/resetsAt", "as": "epochSeconds" },
+            "duration": { "path": "/windowDurationMins", "as": "minutes" }
+          }
+        ]
+      }
+    ]
+  },
+  "refresh": { "intervalSeconds": 300 }
+}

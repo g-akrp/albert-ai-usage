@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "id": "claude",
+  "revision": 1,
+  "name": "Claude Code",
+  "source": {
+    "type": "stdio",
+    "executable": "claude",
+    "args": ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--no-session-persistence"],
+    "timeoutSeconds": 30,
+    "steps": [
+      { "write": { "type": "control_request", "request_id": "maestri-usage", "request": { "subtype": "get_usage", "skip_behaviors": true } } },
+      { "await": {
+          "match": [
+            { "path": "/type", "equals": "control_response" },
+            { "path": "/response/request_id", "equals": "maestri-usage" }
+          ],
+          "error": "/response/error",
+          "require": "/response/response",
+          "capture": "usage"
+      } }
+    ],
+    "output": "usage"
+  },
+  "map": {
+    "root": "/response/response",
+    "available": { "path": "/rate_limits_available" },
+    "plan": { "path": "/subscription_type" },
+    "meters": [
+      {
+        "select": "/rate_limits",
+        "id": "plan",
+        "label": { "key": "plan" },
+        "windows": [
+          {
+            "id": "five_hour",
+            "select": "/five_hour",
+            "label": { "key": "session" },
+            "used": { "path": "/utilization", "as": "percent" },
+            "resetsAt": { "path": "/resets_at", "as": "iso8601" },
+            "duration": { "seconds": 18000 }
+          },
+          {
+            "id": "seven_day",
+            "select": "/seven_day",
+            "label": { "key": "weekly" },
+            "used": { "path": "/utilization", "as": "percent" },
+            "resetsAt": { "path": "/resets_at", "as": "iso8601" },
+            "duration": { "seconds": 604800 }
+          }
+        ]
+      },
+      {
+        "each": "/rate_limits/model_scoped",
+        "id": { "path": "/display_name" },
+        "label": { "path": "/display_name" },
+        "windows": [
+          {
+            "id": "limit",
+            "used": { "path": "/utilization", "as": "percent" },
+            "resetsAt": { "path": "/resets_at", "as": "iso8601" },
+            "duration": { "seconds": 604800 }
+          }
+        ]
+      }
+    ]
+  },
+  "refresh": { "intervalSeconds": 300 }
+}

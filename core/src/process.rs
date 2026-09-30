@@ -108,6 +108,106 @@ pub fn call_copilot_user_for_account(account: &str) -> Result<String, String> {
     String::from_utf8(output.stdout).map_err(|_| "gh output was not valid UTF-8".to_string())
 }
 
+const CLAUDE_REQUEST_ID: &str = "albert-usage";
+
+/// Live call to Claude Code's `control_request`/`control_response`
+/// stdio protocol -- the mechanism Maestri's own shipped provider
+/// config uses (see `~/akrp-repos/albert-ai-usage/example/claude.json`),
+/// not the simpler `-p "/usage"` print-mode text this project tried
+/// first: this gives precise integer percentages and real ISO8601
+/// timestamps instead of parsing human-readable prose. Off by default
+/// — only runs when `ALBERT_LIVE_CLAUDE=1` is set (`make
+/// run-live-claude`). No credential file is read; `claude` handles
+/// its own stored auth. Never touches a model -- zero tokens, zero
+/// cost, purely a local status read.
+pub fn call_claude_usage() -> Result<String, String> {
+    let mut child = Command::new("claude")
+        .args([
+            "-p",
+            "--input-format",
+            "stream-json",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--no-session-persistence",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|_| "could not start claude".to_string())?;
+
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| "no stdin handle".to_string())?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "no stdout handle".to_string())?;
+    let mut reader = BufReader::new(stdout);
+
+    let request = format!(
+        r#"{{"type":"control_request","request_id":"{CLAUDE_REQUEST_ID}","request":{{"subtype":"get_usage","skip_behaviors":true}}}}"#
+    );
+    stdin
+        .write_all(request.as_bytes())
+        .and_then(|_| stdin.write_all(b"\n"))
+        .map_err(|_| "could not write to claude".to_string())?;
+    drop(stdin); // signal end of input; claude exits once it answers
+
+    // The stream includes hook/system lines before the answer (see
+    // real captured output) -- read until one matches our request_id,
+    // bounded so an unexpected stream can't hang this forever.
+    let mut result = None;
+    for _ in 0..200 {
+        let mut line = String::new();
+        match reader.read_line(&mut line) {
+            Ok(0) => break,
+            Ok(_) => {
+                if is_claude_control_response(&line, CLAUDE_REQUEST_ID) {
+                    result = Some(line);
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+
+    let _ = child.kill();
+    let _ = child.wait();
+
+    let line = result.ok_or_else(|| "no matching control_response from claude".to_string())?;
+    extract_claude_response_field(&line)
+}
+
+/// True when `line` is a `control_response` whose `request_id`
+/// matches. Skips every other stream-json event (hooks, system
+/// messages) claude emits alongside the answer.
+fn is_claude_control_response(line: &str, request_id: &str) -> bool {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+        return false;
+    };
+    value.get("type").and_then(|t| t.as_str()) == Some("control_response")
+        && value
+            .get("response")
+            .and_then(|r| r.get("request_id"))
+            .and_then(|r| r.as_str())
+            == Some(request_id)
+}
+
+/// Pulls `response.response` (the actual usage payload) out of the
+/// `control_response` envelope.
+fn extract_claude_response_field(line: &str) -> Result<String, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(line).map_err(|_| "malformed control_response".to_string())?;
+    value
+        .get("response")
+        .and_then(|r| r.get("response"))
+        .map(|v| v.to_string())
+        .ok_or_else(|| "control_response had no response.response field".to_string())
+}
+
 const HANDSHAKE_DELAY: Duration = Duration::from_millis(500);
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 

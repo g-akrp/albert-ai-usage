@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "antigravity",
+  "revision": 1,
+  "name": "Antigravity",
+  "source": {
+    "type": "command",
+    "executable": "agy",
+    "args": ["-p", "/usage", "--output-format", "json"],
+    "timeoutSeconds": 90,
+    "expect": {
+      "match": [{ "path": "/status", "equals": "SUCCESS" }],
+      "require": "/command/data/groups"
+    }
+  },
+  "map": {
+    "root": "/command/data",
+    "meters": [
+      {
+        "each": "/groups",
+        "id": { "path": "/name" },
+        "label": { "path": "/name" },
+        "windows": [
+          {
+            "each": "/buckets",
+            "id": { "path": "/id" },
+            "used": { "path": "/remaining_fraction", "as": "remainingFraction" },
+            "resetsAt": { "path": "/reset_time", "as": "iso8601" },
+            "duration": { "path": "/window", "as": "windowName" }
+          }
+        ]
+      }
+    ]
+  },
+  "refresh": { "intervalSeconds": 600 }
+}

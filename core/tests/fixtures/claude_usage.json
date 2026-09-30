@@ -1,0 +1,7 @@
+{
+  "subtype": "success",
+  "local_command": "usage",
+  "total_cost_usd": 0,
+  "session_id": "should_never_appear",
+  "result": "You are currently using your subscription to power your Claude Code usage\n\nCurrent session: 12% used · resets Sep 30 at 1:59pm (Asia/Bangkok)\nCurrent week (all models): 28% used · resets Oct 3 at 6:59am (Asia/Bangkok)\n\nWhat's contributing to your limits usage?\nshould_never_appear detail text about sessions, skills, and subagents."
+}
