@@ -1,4 +1,5 @@
 pub mod config;
+pub mod swiftbar;
 
 use config::mapping::Report;
 
