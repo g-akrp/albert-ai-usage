@@ -16,6 +16,7 @@ final class Poller {
     }
 
     private let folders: [URL]
+    private var order: [String] = []
     private var configs: [String: ProviderConfig] = [:]
     private var states: [String: State] = [:]
     private var runner: ProviderRunner?
@@ -61,24 +62,27 @@ final class Poller {
     func tick() {
         guard let runner else { return }
         let now = Date()
-        for run in runs {
-            guard let state = states[run.id], !state.running, state.next <= now,
-                  let config = configs[run.id] else { continue }
-            states[run.id]?.running = true
+        for id in order {
+            guard let state = states[id], !state.running, state.next <= now, let config = configs[id] else { continue }
+            states[id]?.running = true
             queue.addOperation { [weak self] in
-                let result = runner.run(config)
-                DispatchQueue.main.async { self?.finish(config, result) }
+                let results = runner.runAll(config)
+                DispatchQueue.main.async { self?.finish(config, results) }
             }
         }
     }
 
-    private func finish(_ config: ProviderConfig, _ result: Result<Report, ProviderFailure>) {
+    /// Replaces the provider's runs (one per account) in place.
+    private func finish(_ config: ProviderConfig, _ results: [ProviderRun]) {
         guard var state = states[config.id] else { return }  // removed while it ran
         state.running = false
-        if case .failure = result { state.failures += 1 } else { state.failures = 0 }
+        let failed = results.allSatisfy { if case .failure = $0.result { return true } else { return false } }
+        state.failures = failed ? state.failures + 1 : 0
         state.next = Date() + Schedule.delay(interval: config.refreshSeconds, failures: state.failures)
         states[config.id] = state
-        if let index = runs.firstIndex(where: { $0.id == config.id }) { runs[index].result = result }
+        let index = runs.firstIndex { $0.configId == config.id } ?? runs.endIndex
+        runs.removeAll { $0.configId == config.id }
+        runs.insert(contentsOf: results, at: min(index, runs.endIndex))
         lastUpdate = Date()
         onChange?()
     }
@@ -87,10 +91,10 @@ final class Poller {
         let loaded = ProviderStore.load(folders: folders)
         configErrors = loaded.errors
         configs = Dictionary(uniqueKeysWithValues: loaded.configs.map { ($0.id, $0) })
-        runs = loaded.configs.map { config in
-            var run = ProviderRun(config: config)
-            run.result = runs.first { $0.id == config.id }?.result
-            return run
+        order = loaded.configs.map(\.id)
+        runs = loaded.configs.flatMap { config in
+            let previous = runs.filter { $0.configId == config.id }
+            return previous.isEmpty ? [ProviderRun(config: config)] : previous
         }
         states = configs.keys.reduce(into: [:]) { $0[$1] = states[$1] ?? State() }
         onChange?()

@@ -12,6 +12,17 @@ public struct ProviderConfig {
     public let source: Source
     public let map: MapSpec
     public let refreshSeconds: Int
+    /// Project extension: run the provider once per account that this lists.
+    public let accounts: AccountsSpec?
+}
+
+/// Lists accounts by running `source`, then reads each element of `each` and its id at `id`.
+/// Each account runs the provider's source with `${account}` in `args` and `env` replaced by the id.
+public struct AccountsSpec {
+    public let source: Source
+    public let each: String
+    public let id: String
+    public let match: [Predicate]
 }
 
 public struct RGB: Equatable, Hashable {
@@ -30,6 +41,21 @@ public struct RGB: Equatable, Hashable {
 public enum Source {
     case command(CommandSource)
     case stdio(StdioSource)
+
+    /// The same source with `${account}` replaced in its arguments and environment values.
+    public func replacingAccount(with account: String) -> Source {
+        func fill(_ text: String) -> String { text.replacingOccurrences(of: "${account}", with: account) }
+        switch self {
+        case .command(let s):
+            return .command(CommandSource(executable: s.executable, args: s.args.map(fill), env: s.env.mapValues(fill),
+                                          timeoutSeconds: s.timeoutSeconds, maxOutputBytes: s.maxOutputBytes,
+                                          expect: s.expect))
+        case .stdio(let s):
+            return .stdio(StdioSource(executable: s.executable, args: s.args.map(fill), env: s.env.mapValues(fill),
+                                      timeoutSeconds: s.timeoutSeconds, steps: s.steps, output: s.output,
+                                      maxLineBytes: s.maxLineBytes, maxTotalBytes: s.maxTotalBytes))
+        }
+    }
 
     public var executable: String {
         switch self {
@@ -176,7 +202,11 @@ extension ProviderConfig {
             id: id, name: name, iconLabel: label, iconColor: color,
             source: try parseSource(p.child("source")),
             map: try parseMap(p.child("map")),
-            refreshSeconds: min(max(refresh ?? 300, 60), 86_400))
+            refreshSeconds: min(max(refresh ?? 300, 60), 86_400),
+            accounts: try p.optional("accounts").map { a in
+                AccountsSpec(source: try parseSource(a.child("source")), each: try a.string("each"),
+                             id: try a.string("id"), match: try parsePredicates(a))
+            })
     }
 
     private static func parseSource(_ p: Reader) throws -> Source {

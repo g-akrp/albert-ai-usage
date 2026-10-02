@@ -25,6 +25,10 @@ public struct MeterReport: Equatable {
     public init(id: String, label: String, windows: [WindowReport]) {
         (self.id, self.label, self.windows) = (id, label, windows)
     }
+
+    public var maxPercent: Double? {
+        windows.compactMap(\.usedPercent).max()
+    }
 }
 
 public struct WindowReport: Equatable {

@@ -1,14 +1,30 @@
 {
   "schemaVersion": 1,
   "id": "copilot",
-  "revision": 2,
+  "revision": 3,
   "name": "GitHub Copilot",
   "iconLabel": "GHC",
   "iconColor": "8957E5",
+  "accounts": {
+    "source": {
+      "type": "command",
+      "executable": "gh",
+      "args": ["auth", "status", "--json", "hosts"],
+      "timeoutSeconds": 20
+    },
+    "each": "/hosts/github.com",
+    "id": "/login",
+    "match": [{ "path": "/state", "equals": "success" }]
+  },
   "source": {
     "type": "command",
-    "executable": "gh",
-    "args": ["api", "copilot_internal/user"],
+    "executable": "/bin/sh",
+    "args": [
+      "-c",
+      "GH_TOKEN=\"$(gh auth token --user \"$1\")\" || exit 1; export GH_TOKEN; exec gh api copilot_internal/user",
+      "sh",
+      "${account}"
+    ],
     "timeoutSeconds": 20,
     "expect": {
       "require": "/quota_snapshots"

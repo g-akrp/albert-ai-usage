@@ -111,12 +111,24 @@ public enum StatusIcons {
     /// The pinned provider's icon if the pin is valid; otherwise one icon per provider, which the
     /// menu bar cycles through. Providers still loading are left out of the cycle.
     public static func icons(runs: [ProviderRun], pinned: String?) -> [IconSpec] {
-        if let run = runs.first(where: { $0.id == pinned }) {
+        if let (run, meterId) = Pin.resolve(pinned, in: runs) {
+            if let meterId, case .success(let report)? = run.result,
+               let meter = report.meters.first(where: { $0.id == meterId }), let percent = meter.maxPercent {
+                let text = percentText(percent)
+                return [IconSpec(top: label(for: meter.label), bottom: text, topColor: run.iconColor,
+                                 bottomColor: severity(percent), accessibility: "\(run.name) \(meter.label) \(text)")]
+            }
             return [icon(for: run) ?? IconSpec(top: run.iconLabel, bottom: "--", topColor: run.iconColor,
                                                bottomColor: .gray, accessibility: "\(run.name) no usage data")]
         }
         let icons = runs.compactMap(icon(for:))
         return icons.isEmpty ? [placeholder] : icons
+    }
+
+    /// Top row for a pinned meter: the first three letters or digits of its label, for example GEM.
+    public static func label(for meterLabel: String) -> String {
+        let letters = meterLabel.uppercased().filter { $0.isASCII && ($0.isLetter || $0.isNumber) }
+        return letters.isEmpty ? "?" : String(letters.prefix(3))
     }
 
     static func icon(for run: ProviderRun) -> IconSpec? {
@@ -143,13 +155,35 @@ public struct ProviderRun: Equatable {
     public let iconColor: RGB
     /// `nil` until the first run finishes.
     public var result: Result<Report, ProviderFailure>?
+    /// The provider file this run came from; differs from `id` for one account of several.
+    public let configId: String
 
     public init(id: String, name: String, iconLabel: String, iconColor: RGB,
-                result: Result<Report, ProviderFailure>? = nil) {
+                result: Result<Report, ProviderFailure>? = nil, configId: String? = nil) {
         (self.id, self.name, self.iconLabel, self.iconColor, self.result) = (id, name, iconLabel, iconColor, result)
+        self.configId = configId ?? id
     }
 
-    public init(config: ProviderConfig) {
-        self.init(id: config.id, name: config.name, iconLabel: config.iconLabel, iconColor: config.iconColor)
+    public init(config: ProviderConfig, result: Result<Report, ProviderFailure>? = nil) {
+        self.init(id: config.id, name: config.name, iconLabel: config.iconLabel, iconColor: config.iconColor,
+                  result: result)
+    }
+}
+
+/// What the menu bar is pinned to: a run id (`codex`, `copilot:octocat`), or a run id and a meter
+/// id joined by `|` (`antigravity|Gemini Models`).
+public enum Pin {
+    public static func key(run: String, meter: String) -> String { "\(run)|\(meter)" }
+
+    /// The pinned run and meter id, if the run exists. A pin on a provider file whose runs are now
+    /// per account (`copilot`) falls back to its first account.
+    public static func resolve(_ pin: String?, in runs: [ProviderRun]) -> (run: ProviderRun, meter: String?)? {
+        guard let pin else { return nil }
+        let parts = pin.split(separator: "|", maxSplits: 1).map(String.init)
+        let meter = parts.count > 1 ? parts[1] : nil
+        guard let runId = parts.first else { return nil }
+        if let run = runs.first(where: { $0.id == runId }) { return (run, meter) }
+        if meter == nil, let run = runs.first(where: { $0.configId == runId }) { return (run, nil) }
+        return nil
     }
 }

@@ -5,6 +5,8 @@ public enum Tone: Equatable { case normal, secondary, green, orange, red }
 public enum MenuEntry: Equatable {
     /// A provider's title row. Choosing it pins the provider.
     case provider(id: String, title: String, pinned: Bool)
+    /// A meter's row, when a provider has several. Choosing it pins the meter (`Pin.key`).
+    case meter(pin: String, title: String, tone: Tone, pinned: Bool)
     case detail(String, Tone)
     case separator
     case cycleAll(checked: Bool)
@@ -21,14 +23,14 @@ public enum MenuModel {
                                launchAtLogin: Bool, version: String, formatReset: (Date) -> String) -> [MenuEntry] {
         var entries: [MenuEntry] = []
         for run in runs {
-            entries += providerEntries(run, pinned: run.id == pinned, formatReset: formatReset)
+            entries += providerEntries(run, pinned: pinned, formatReset: formatReset)
             entries.append(.separator)
         }
         if !configErrors.isEmpty {
             entries += configErrors.map { .detail($0, .red) }
             entries.append(.separator)
         }
-        entries.append(.cycleAll(checked: !runs.contains { $0.id == pinned }))
+        entries.append(.cycleAll(checked: Pin.resolve(pinned, in: runs) == nil))
         entries.append(.refresh)
         if let updated { entries.append(.updated(updated)) }
         entries.append(.separator)
@@ -38,8 +40,11 @@ public enum MenuModel {
 
     static let indent = "\u{00A0}\u{00A0}\u{00A0}"
 
-    static func providerEntries(_ run: ProviderRun, pinned: Bool, formatReset: (Date) -> String) -> [MenuEntry] {
-        let mark = pinned ? "\u{2605}" : "\u{2606}"  // ★ / ☆
+    static func star(_ pinned: Bool) -> String { pinned ? "\u{2605}" : "\u{2606}" }  // ★ / ☆
+
+    static func providerEntries(_ run: ProviderRun, pinned pin: String?, formatReset: (Date) -> String) -> [MenuEntry] {
+        let pinned = pin == run.id
+        let mark = star(pinned)
         switch run.result {
         case nil:
             return [.provider(id: run.id, title: "\(mark) \(run.name)", pinned: pinned),
@@ -55,13 +60,24 @@ public enum MenuModel {
                 entries.append(.detail(indent + "Plan limits don't apply to this account", .secondary))
             }
             if report.meters.isEmpty { entries.append(.detail(indent + "No usage data", .secondary)) }
+            let several = report.meters.count > 1
             for meter in report.meters {
+                let key = Pin.key(run: run.id, meter: meter.id), meterPinned = pin == key
                 if meter.windows.count == 1, meter.windows[0].label == nil {
-                    entries.append(windowEntry(meter.windows[0], label: meter.label, nested: false, formatReset: formatReset))
+                    let row = windowEntry(meter.windows[0], label: meter.label, nested: false, formatReset: formatReset)
+                    if several, case .detail(let text, let tone) = row {
+                        entries.append(.meter(pin: key, title: indent + star(meterPinned) + " " + text.dropFirst(indent.count),
+                                              tone: tone, pinned: meterPinned))
+                    } else {
+                        entries.append(row)
+                    }
                     continue
                 }
-                let nested = report.meters.count > 1
-                if nested { entries.append(.detail(indent + meter.label, .secondary)) }
+                let nested = several
+                if nested {
+                    entries.append(.meter(pin: key, title: indent + star(meterPinned) + " " + meter.label, tone: .secondary,
+                                          pinned: meterPinned))
+                }
                 for window in meter.windows {
                     entries.append(windowEntry(window, label: window.label ?? window.id, nested: nested,
                                                formatReset: formatReset))

@@ -204,3 +204,45 @@ func menuChecks() {
         check("infoPlistReadable", false)
     }
 }
+
+func pinChecks() {
+    let agy = Report(meters: [
+        MeterReport(id: "Gemini Models", label: "Gemini Models", windows: [
+            WindowReport(id: "w", label: "Weekly", usedPercent: 7), WindowReport(id: "f", label: "Five Hour", usedPercent: 3)]),
+        MeterReport(id: "Claude and GPT models", label: "Claude and GPT models", windows: [
+            WindowReport(id: "w", label: "Weekly", usedPercent: 95)]),
+    ])
+    let run = ProviderRun(id: "antigravity", name: "Antigravity", iconLabel: "AGY", iconColor: RGB(0x42, 0x85, 0xF4),
+                          result: .success(agy))
+    let gemini = Pin.key(run: "antigravity", meter: "Gemini Models")
+    let icon = StatusIcons.icons(runs: [run], pinned: gemini)
+    check("meterPinIcon", icon.map { "\($0.top)/\($0.bottom)" } == ["GEM/7%"] && icon[0].topColor == RGB(0x42, 0x85, 0xF4))
+    check("meterPinAccessibility", icon.first?.accessibility == "Antigravity Gemini Models 7%")
+    check("meterLabel", [StatusIcons.label(for: "Claude and GPT models"), StatusIcons.label(for: "5-hour"), StatusIcons.label(for: "··")]
+        == ["CLA", "5HO", "?"])
+    check("missingMeterFallsBackToProvider",
+          StatusIcons.icons(runs: [run], pinned: Pin.key(run: "antigravity", meter: "gone")).map(\.bottom) == ["95%"])
+    check("pinAccountFallback", Pin.resolve("copilot", in: [
+        ProviderRun(id: "copilot:a", name: "A", iconLabel: "GH1", iconColor: .gray, configId: "copilot")])?.run.id == "copilot:a")
+    check("pinUnknown", Pin.resolve("nope", in: [run]) == nil && Pin.resolve(nil, in: [run]) == nil)
+
+    let utc = MenuModel.resetFormatter(timeZone: TimeZone(identifier: "UTC")!)
+    let entries = MenuModel.entries(runs: [run], pinned: gemini, configErrors: [], updated: nil, launchAtLogin: false,
+                                    version: "1", formatReset: utc.string(from:))
+    let i = "\u{00A0}\u{00A0}\u{00A0}"
+    check("menuMeterRowPinned", entries.contains(.meter(pin: gemini, title: i + "\u{2605} Gemini Models", tone: .secondary, pinned: true)))
+    check("menuOtherMeterUnpinned", entries.contains(.meter(pin: Pin.key(run: "antigravity", meter: "Claude and GPT models"),
+                                                           title: i + "\u{2606} Claude and GPT models", tone: .secondary, pinned: false)))
+    check("menuProviderNotStarredForMeterPin", entries.first == .provider(id: "antigravity", title: "\u{2606} Antigravity", pinned: false))
+    check("menuMeterPinIsNotCycling", entries.contains(.cycleAll(checked: false)))
+
+    let copilot = Report(meters: [
+        MeterReport(id: "chat", label: "Chat", windows: [WindowReport(id: "current", usedPercent: 0)]),
+        MeterReport(id: "premium", label: "Premium", windows: [WindowReport(id: "current", usedPercent: 79)]),
+    ])
+    let copilotRun = ProviderRun(id: "copilot:a", name: "Copilot (a)", iconLabel: "GH1", iconColor: .gray,
+                                 result: .success(copilot), configId: "copilot")
+    let flat = MenuModel.entries(runs: [copilotRun], pinned: nil, configErrors: [], updated: nil, launchAtLogin: false,
+                                 version: "1", formatReset: utc.string(from:))
+    check("menuFlatMeterPinnable", flat.contains(.meter(pin: "copilot:a|premium", title: i + "\u{2606} Premium: 79%", tone: .orange, pinned: false)))
+}

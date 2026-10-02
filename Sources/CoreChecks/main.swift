@@ -15,6 +15,8 @@ iconChecks()
 menuChecks()
 environmentChecks()
 runnerChecks()
+accountChecks()
+pinChecks()
 
 if failures.isEmpty {
     print("ALL PASS")

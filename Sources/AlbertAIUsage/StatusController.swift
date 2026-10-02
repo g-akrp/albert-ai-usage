@@ -130,6 +130,14 @@ final class StatusController: NSObject, NSMenuDelegate {
             let item = action(title, #selector(pin(_:)))
             item.representedObject = id
             return item
+        case .meter(let pin, let title, let tone, _):
+            let item = action(title, #selector(pin(_:)))
+            item.representedObject = pin
+            if let color = Self.color(tone) {
+                item.attributedTitle = NSAttributedString(
+                    string: title, attributes: [.foregroundColor: color, .font: NSFont.menuFont(ofSize: 0)])
+            }
+            return item
         case .detail(let text, let tone):
             let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
             if let color = Self.color(tone) {

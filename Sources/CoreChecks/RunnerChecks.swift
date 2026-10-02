@@ -112,3 +112,43 @@ private func processExists(matching pattern: String) -> Bool {
     defer { process.terminate() }
     return process.waitForExit(deadline: Date() + 5) == 0
 }
+
+func accountChecks() {
+    let runner = ProviderRunner(environment: ChildEnvironment(
+        process: ["PATH": "/usr/bin:/bin"], loginShell: nil, home: NSHomeDirectory()))
+    func accountsConfig(_ listScript: String) -> ProviderConfig {
+        let list = String(data: try! JSONSerialization.data(withJSONObject: [listScript]), encoding: .utf8)!
+        return try! config(#"""
+        {"schemaVersion": 1, "id": "multi", "revision": 1, "name": "Multi", "iconLabel": "GHC",
+         "accounts": {"source": {"type": "command", "executable": "/bin/sh", "args": ["-c", \#(list.dropFirst())},
+                      "each": "/hosts/h", "id": "/login", "match": [{"path": "/state", "equals": "success"}]},
+         "source": {"type": "command", "executable": "/bin/sh",
+                    "args": ["-c", "case \"$1\" in alice) echo '{\"used\": 10}';; bob) echo '{\"used\": 80}';; *) exit 4;; esac", "sh", "${account}"]},
+         "map": {"meters": [{"id": "m", "label": {"text": "M"}, "windows": [{"id": "w", "used": {"path": "/used", "as": "percent"}}]}]}}
+        """#)
+    }
+    let twoAccounts = #"echo '{"hosts": {"h": [{"login": "alice", "state": "success"}, {"login": "bob", "state": "success"}, {"login": "carol", "state": "error"}, {"login": "alice", "state": "success"}]}}'"#
+    let runs = runner.runAll(accountsConfig(twoAccounts))
+    check("accountsOneRunEach", runs.map(\.id) == ["multi:alice", "multi:bob"])
+    check("accountsNames", runs.map(\.name) == ["Multi · alice", "Multi · bob"])
+    check("accountsLabelsNumbered", runs.map(\.iconLabel) == ["GH1", "GH2"])
+    check("accountsConfigId", runs.allSatisfy { $0.configId == "multi" })
+    check("accountsResults", runs.map { $0.result.flatMap { try? $0.get().maxPercent } } == [10, 80])
+
+    let one = runner.runAll(accountsConfig(#"echo '{"hosts": {"h": [{"login": "alice", "state": "success"}]}}'"#))
+    check("singleAccountKeepsLabel", one.map(\.iconLabel) == ["GHC"] && one.map(\.id) == ["multi:alice"])
+
+    let broken = runner.runAll(accountsConfig("exit 1"))
+    check("accountListFailure", broken.map(\.id) == ["multi"]
+        && broken.first.map { if case .failure(let f)? = $0.result { return f.message.hasPrefix("could not list accounts") } else { return false } } == true)
+    let none = runner.runAll(accountsConfig(#"echo '{"hosts": {"h": []}}'"#))
+    check("noAccounts", none.count == 1 && { if case .failure(let f)? = none[0].result { return f.message == "no accounts found" }; return false }())
+
+    let copilot = bundledConfig("copilot")
+    check("copilotListsAccounts", copilot?.accounts?.each == "/hosts/github.com" && copilot?.accounts?.id == "/login")
+    if case .command(let source)? = copilot?.source.replacingAccount(with: "octocat") {
+        check("copilotAccountArgument", source.args.last == "octocat" && source.executable == "/bin/sh")
+    } else {
+        check("copilotAccountArgument", false)
+    }
+}

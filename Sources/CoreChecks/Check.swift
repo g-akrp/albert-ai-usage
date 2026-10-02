@@ -37,17 +37,19 @@ func liveRun() {
     let formatter = MenuModel.resetFormatter()
     for config in loaded.configs {
         let start = Date()
-        var run = ProviderRun(config: config)
-        run.result = runner.run(config)
+        let runs = runner.runAll(config)
         print(String(format: "== %@ (%.1fs)", config.id, Date().timeIntervalSince(start)))
+        for run in runs {
         for entry in MenuModel.entries(runs: [run], pinned: nil, configErrors: [], updated: nil, launchAtLogin: false,
                                        version: "", formatReset: formatter.string(from:)) {
             switch entry {
             case .provider(_, let title, _): print(title)
+            case .meter(_, let title, let tone, _): print("\(title)  [\(tone), pinnable]")
             case .detail(let text, let tone): print("\(text)  [\(tone)]")
             default: break
             }
         }
         print("icon:", StatusIcons.icons(runs: [run], pinned: nil).map { "\($0.top)/\($0.bottom)" })
+        }
     }
 }

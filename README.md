@@ -4,6 +4,8 @@ A small native macOS menu bar app that shows plan usage for AI coding agents: Cl
 
 - The menu bar icon is a two-row pixel label: the provider's short name in its brand color on top, its highest used percent below in green, orange (from 70%), or red (from 90%). A provider that fails shows a red `ERR`.
 - Nothing pinned: the icon cycles through every provider every 5 seconds. Click a provider in the menu to pin it; choose **Cycle All Providers** to unpin.
+- A provider with several limits (Antigravity's model groups such as Gemini Models, Copilot's Chat and Premium Interactions) lists each with a ☆. Click one to pin just that limit; the icon's top row then shows the first three letters of its name, for example `GEM`, in the provider's color.
+- GitHub Copilot shows every account `gh` is logged in to (`gh auth status`), without switching the active account. With more than one account the icon labels are `GH1`, `GH2`, … in the order `gh` lists them.
 - The menu lists every provider with its plan and each limit window, with reset times in your local time zone, and the reason when a provider fails.
 - Each provider refreshes on its own interval (5 minutes; Antigravity 10 minutes), at most two at a time. A failing provider retries after 1, 2, 4, … minutes, at most every 30. **Refresh Now** (⌘R) runs all of them.
 - No Dock icon. AppKit only, no third-party packages.
@@ -25,7 +27,13 @@ If you used the SwiftBar plugin, remove its symlink `albert-usage.30s.sh` from S
 
 ## Providers
 
-A provider is a JSON file, not code: which program to run and how to read its answer. The format is the Maestri Agent Usage format, documented in [example/AGENTS.md](example/AGENTS.md), with four additions: `iconLabel` (the icon's top row, default the first three letters of the id), `iconColor` (`"RRGGBB"`, default gray), `"as": "remainingPercent"` for `used` (0 to 100 left), and `match` on a meter or window (the same predicates as `expect`; a value where one fails is skipped). Copilot uses `match` to skip quotas that do not apply: `has_quota` false (Copilot Free has no premium requests, reported as 0% remaining) or `unlimited` true.
+A provider is a JSON file, not code: which program to run and how to read its answer. The format is the Maestri Agent Usage format, documented in [example/AGENTS.md](example/AGENTS.md), with these additions:
+
+- `iconLabel`: the icon's top row. Default: the first three letters of the id.
+- `iconColor`: `"RRGGBB"`. Default: gray.
+- `"as": "remainingPercent"` for `used`: 0 to 100 left.
+- `match` on a meter or window: the same predicates as `expect`; a value where one fails is skipped. Copilot uses it to skip quotas that do not apply: `has_quota` false (Copilot Free has no premium requests, reported as 0% remaining) or `unlimited` true.
+- `accounts`: run the provider once per account. Its `source` lists the accounts, `each` points to the list, `id` to each account's name, and an optional `match` filters them. `${account}` in the provider's `args` and `env` is replaced by the name. Copilot lists `gh auth status --json hosts` and runs `gh api` with `GH_TOKEN` set from `gh auth token --user <account>` inside that child process only; the token is never stored.
 
 The app ships `Resources/providers/*.json`. To add a provider or change a shipped one, choose **Open Providers Folder…** and put a `<id>.json` file in `~/.config/albert-ai-usage/providers/`. A file there with the same id replaces the shipped one. Files are reread on **Refresh Now**; a file that does not load is listed in the menu with the reason.
 

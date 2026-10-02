@@ -11,6 +11,48 @@ public struct ProviderRunner {
             .mapError { $0 as? ProviderFailure ?? ProviderFailure(String(describing: $0)) }
     }
 
+    /// One run per account when the config lists accounts, otherwise one run. A failure to list
+    /// accounts is one failed run under the config's own id.
+    public func runAll(_ config: ProviderConfig) -> [ProviderRun] {
+        guard let spec = config.accounts else {
+            return [ProviderRun(config: config, result: run(config))]
+        }
+        let accounts: [String]
+        do {
+            accounts = try listAccounts(spec)
+        } catch {
+            let message = (error as? ProviderFailure)?.message ?? String(describing: error)
+            return [ProviderRun(config: config, result: .failure(ProviderFailure("could not list accounts: \(message)")))]
+        }
+        guard !accounts.isEmpty else {
+            return [ProviderRun(config: config, result: .failure(ProviderFailure("no accounts found")))]
+        }
+        return accounts.enumerated().map { index, account in
+            let source = config.source.replacingAccount(with: account)
+            let result = Result { Mapper.apply(config.map, to: try capture(source)) }
+                .mapError { $0 as? ProviderFailure ?? ProviderFailure(String(describing: $0)) }
+            // Several accounts share a brand color, so the label's last letter becomes the account number.
+            let label = accounts.count > 1 && index < 9
+                ? String(config.iconLabel.prefix(2)) + String(index + 1) : config.iconLabel
+            return ProviderRun(id: "\(config.id):\(account)", name: "\(config.name) · \(account)", iconLabel: label,
+                               iconColor: config.iconColor, result: result, configId: config.id)
+        }
+    }
+
+    func listAccounts(_ spec: AccountsSpec) throws -> [String] {
+        let document = try capture(spec.source)
+        guard let items = JSON.resolve(document, spec.each) as? [Any] else {
+            throw ProviderFailure("the answer has no list at \(spec.each)")
+        }
+        var accounts: [String] = []
+        for item in items where Predicate.allHold(spec.match, in: item) {
+            if let account = JSON.idString(JSON.resolve(item, spec.id)), !accounts.contains(account) {
+                accounts.append(account)
+            }
+        }
+        return accounts
+    }
+
     /// The JSON document the map reads.
     public func capture(_ source: Source) throws -> Any {
         let name = source.executable
