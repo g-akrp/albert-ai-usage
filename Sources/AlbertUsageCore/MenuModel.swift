@@ -10,6 +10,8 @@ public enum MenuEntry: Equatable {
     case detail(String, Tone)
     case separator
     case cycleAll(checked: Bool)
+    /// The Providers submenu: one checkbox per provider file.
+    case providers([ProviderToggle])
     case refresh
     case updated(String)
     case launchAtLogin(Bool)
@@ -18,13 +20,31 @@ public enum MenuEntry: Equatable {
     case quit
 }
 
+/// Whether a provider file is monitored. Off: it never runs and is hidden from the menu bar and menu.
+public struct ProviderToggle: Equatable {
+    public let id: String
+    public let name: String
+    public let enabled: Bool
+
+    public init(id: String, name: String, enabled: Bool) { (self.id, self.name, self.enabled) = (id, name, enabled) }
+
+    /// The runs of providers that are on.
+    public static func visible(_ runs: [ProviderRun], disabled: Set<String>) -> [ProviderRun] {
+        runs.filter { !disabled.contains($0.configId) }
+    }
+}
+
 public enum MenuModel {
-    public static func entries(runs: [ProviderRun], pinned: String?, configErrors: [String], updated: String?,
+    public static func entries(runs: [ProviderRun], pinned: String?, configErrors: [String],
+                               providers: [ProviderToggle] = [], updated: String?,
                                launchAtLogin: Bool, version: String, formatReset: (Date) -> String) -> [MenuEntry] {
         var entries: [MenuEntry] = []
         for run in runs {
             entries += providerEntries(run, pinned: pinned, formatReset: formatReset)
             entries.append(.separator)
+        }
+        if runs.isEmpty, !providers.isEmpty, !providers.contains(where: \.enabled) {
+            entries += [.detail("All providers are off", .secondary), .separator]
         }
         if !configErrors.isEmpty {
             entries += configErrors.map { .detail($0, .red) }
@@ -34,6 +54,7 @@ public enum MenuModel {
         entries.append(.refresh)
         if let updated { entries.append(.updated(updated)) }
         entries.append(.separator)
+        if !providers.isEmpty { entries.append(.providers(providers)) }
         entries += [.launchAtLogin(launchAtLogin), .openProvidersFolder, .separator, .version(version), .quit]
         return entries
     }

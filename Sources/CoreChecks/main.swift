@@ -17,6 +17,7 @@ environmentChecks()
 runnerChecks()
 accountChecks()
 pinChecks()
+toggleChecks()
 
 if failures.isEmpty {
     print("ALL PASS")

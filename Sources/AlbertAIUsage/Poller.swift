@@ -5,6 +5,14 @@ import Foundation
 /// Main thread only; provider runs happen on a background queue.
 final class Poller {
     private(set) var runs: [ProviderRun] = []
+    /// Provider file ids that are switched off: they do not run.
+    var disabled: Set<String> = [] {
+        didSet { tick() }
+    }
+    /// Every provider file, in menu order.
+    var providerNames: [(id: String, name: String)] {
+        order.compactMap { id in configs[id].map { (id, $0.name) } }
+    }
     private(set) var configErrors: [String] = []
     private(set) var lastUpdate: Date?
     var onChange: (() -> Void)?
@@ -62,7 +70,7 @@ final class Poller {
     func tick() {
         guard let runner else { return }
         let now = Date()
-        for id in order {
+        for id in order where !disabled.contains(id) {
             guard let state = states[id], !state.running, state.next <= now, let config = configs[id] else { continue }
             states[id]?.running = true
             queue.addOperation { [weak self] in

@@ -246,3 +246,24 @@ func pinChecks() {
                                  version: "1", formatReset: utc.string(from:))
     check("menuFlatMeterPinnable", flat.contains(.meter(pin: "copilot:a|premium", title: i + "\u{2606} Premium: 79%", tone: .orange, pinned: false)))
 }
+
+func toggleChecks() {
+    let runs = [
+        ProviderRun(id: "claude", name: "Claude Code", iconLabel: "CLD", iconColor: .gray, result: .success(Report(meters: []))),
+        ProviderRun(id: "copilot:a", name: "Copilot · a", iconLabel: "GH1", iconColor: .gray, configId: "copilot"),
+        ProviderRun(id: "copilot:b", name: "Copilot · b", iconLabel: "GH2", iconColor: .gray, configId: "copilot"),
+    ]
+    let toggles = [ProviderToggle(id: "claude", name: "Claude Code", enabled: true),
+                   ProviderToggle(id: "copilot", name: "GitHub Copilot", enabled: false)]
+    check("visibleRunsHideDisabled", ProviderToggle.visible(runs, disabled: ["copilot"]).map(\.id) == ["claude"])
+    check("visibleRunsAllEnabled", ProviderToggle.visible(runs, disabled: []).count == 3)
+    let entries = MenuModel.entries(runs: [runs[0]], pinned: nil, configErrors: [], providers: toggles, updated: nil,
+                                    launchAtLogin: false, version: "1", formatReset: { _ in "" })
+    check("menuProvidersSubmenu", entries.contains(.providers(toggles)))
+    check("menuProvidersBeforeLaunchAtLogin",
+          entries.firstIndex(of: .providers(toggles))! < entries.firstIndex(of: .launchAtLogin(false))!)
+    check("menuDisabledProviderHidden", !entries.contains { if case .provider(let id, _, _) = $0 { return id.hasPrefix("copilot") }; return false })
+    let none = MenuModel.entries(runs: [], pinned: nil, configErrors: [], providers: toggles.map { ProviderToggle(id: $0.id, name: $0.name, enabled: false) },
+                                 updated: nil, launchAtLogin: false, version: "1", formatReset: { _ in "" })
+    check("menuAllDisabledHint", none.contains(.detail("All providers are off", .secondary)))
+}

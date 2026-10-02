@@ -5,6 +5,7 @@ A small native macOS menu bar app that shows plan usage for AI coding agents: Cl
 - The menu bar icon is a two-row pixel label: the provider's short name in its brand color on top, its highest used percent below in green, orange (from 70%), or red (from 90%). A provider that fails shows a red `ERR`.
 - Nothing pinned: the icon cycles through every provider every 5 seconds. Click a provider in the menu to pin it; choose **Cycle All Providers** to unpin.
 - A provider with several limits (Antigravity's model groups such as Gemini Models, Copilot's Chat and Premium Interactions) lists each with a ☆. Click one to pin just that limit; the icon's top row then shows the first three letters of its name, for example `GEM`, in the provider's color.
+- **Providers** in the menu turns monitoring of each provider on or off. A provider that is off never runs and is hidden from the menu bar and the menu; turning it back on runs it right away. The choice is kept across launches.
 - GitHub Copilot shows every account `gh` is logged in to (`gh auth status`), without switching the active account. With more than one account the icon labels are `GH1`, `GH2`, … in the order `gh` lists them.
 - The menu lists every provider with its plan and each limit window, with reset times in your local time zone, and the reason when a provider fails.
 - Each provider refreshes on its own interval (5 minutes; Antigravity 10 minutes), at most two at a time. A failing provider retries after 1, 2, 4, … minutes, at most every 30. **Refresh Now** (⌘R) runs all of them.

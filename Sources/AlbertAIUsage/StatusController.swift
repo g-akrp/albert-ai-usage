@@ -21,6 +21,15 @@ final class StatusController: NSObject, NSMenuDelegate {
     private var cycleTimer: Timer?
 
     /// The provider shown in the menu bar; `nil` cycles through all of them.
+    private var disabled: Set<String> {
+        get { Set(defaults.stringArray(forKey: "disabledProviders") ?? []) }
+        set { defaults.set(newValue.sorted(), forKey: "disabledProviders") }
+    }
+
+    private var visibleRuns: [ProviderRun] {
+        ProviderToggle.visible(poller.runs, disabled: poller.disabled)
+    }
+
     private var pinned: String? {
         get { defaults.string(forKey: "pinnedProvider") }
         set { defaults.set(newValue, forKey: "pinnedProvider") }
@@ -36,6 +45,7 @@ final class StatusController: NSObject, NSMenuDelegate {
         menu.autoenablesItems = false
         statusItem.menu = menu
         statusItem.button?.imagePosition = .imageOnly
+        poller.disabled = disabled
         poller.onChange = { [weak self] in self?.updateIcons() }
         updateIcons()
         poller.start()
@@ -58,7 +68,7 @@ final class StatusController: NSObject, NSMenuDelegate {
     // MARK: Menu bar icon
 
     private func updateIcons() {
-        let newIcons = StatusIcons.icons(runs: poller.runs, pinned: pinned)
+        let newIcons = StatusIcons.icons(runs: visibleRuns, pinned: pinned)
         if newIcons != icons {
             icons = newIcons
             images = newIcons.map(Self.image)
@@ -114,7 +124,10 @@ final class StatusController: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         let entries = MenuModel.entries(
-            runs: poller.runs, pinned: pinned, configErrors: poller.configErrors,
+            runs: visibleRuns, pinned: pinned, configErrors: poller.configErrors,
+            providers: poller.providerNames.map {
+                ProviderToggle(id: $0.id, name: $0.name, enabled: !poller.disabled.contains($0.id))
+            },
             updated: poller.lastUpdate.map { "Updated \(timeFormatter.string(from: $0))" },
             launchAtLogin: SMAppService.mainApp.status == .enabled,
             version: AppVersion.current, formatReset: resetFormatter.string(from:))
@@ -155,6 +168,17 @@ final class StatusController: NSObject, NSMenuDelegate {
             let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
             item.isEnabled = false
             return item
+        case .providers(let toggles):
+            let item = NSMenuItem(title: "Providers", action: nil, keyEquivalent: "")
+            let submenu = NSMenu()
+            for toggle in toggles {
+                let entry = action(toggle.name, #selector(toggleProvider(_:)))
+                entry.representedObject = toggle.id
+                entry.state = toggle.enabled ? .on : .off
+                submenu.addItem(entry)
+            }
+            item.submenu = submenu
+            return item
         case .launchAtLogin(let enabled):
             let item = action("Launch at Login", #selector(toggleLaunchAtLogin))
             item.state = enabled ? .on : .off
@@ -184,6 +208,15 @@ final class StatusController: NSObject, NSMenuDelegate {
 
     @objc private func pin(_ sender: NSMenuItem) {
         pinned = sender.representedObject as? String
+        updateIcons()
+    }
+
+    @objc private func toggleProvider(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        var set = disabled
+        if set.contains(id) { set.remove(id) } else { set.insert(id) }
+        disabled = set
+        poller.disabled = set
         updateIcons()
     }
 
