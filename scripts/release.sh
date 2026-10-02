@@ -32,7 +32,7 @@ fi
 
 # Version: Info.plist (short version and build number) and the app constant.
 plist=Resources/Info.plist
-versionfile=Sources/AlbertUsageCore/Version.swift
+versionfile=Sources/AIUsageCore/Version.swift
 # Undo the version edits if anything below fails before the release commit.
 trap 'git checkout -- "$plist" "$versionfile"' ERR
 current=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$plist")
@@ -50,28 +50,28 @@ swift run CoreChecks
 scripts/build-app.sh
 
 # DMG with the app and an Applications shortcut for drag-to-install.
-dmg="build/AlbertAIUsage-$version.dmg"
+dmg="build/AIUsage-$version.dmg"
 staging=build/dmg
 rm -rf "$staging" "$dmg"
 mkdir -p "$staging"
-ditto build/AlbertAIUsage.app "$staging/AlbertAIUsage.app"
+ditto "build/AI Usage.app" "$staging/AI Usage.app"
 ln -s /Applications "$staging/Applications"
-hdiutil create -volname "Albert AI Usage $version" -srcfolder "$staging" -fs HFS+ -format UDZO -ov "$dmg" >/dev/null
+hdiutil create -volname "AI Usage $version" -srcfolder "$staging" -fs HFS+ -format UDZO -ov "$dmg" >/dev/null
 rm -rf "$staging"
-(cd build && shasum -a 256 "AlbertAIUsage-$version.dmg" > "AlbertAIUsage-$version.dmg.sha256")
+(cd build && shasum -a 256 "AIUsage-$version.dmg" > "AIUsage-$version.dmg.sha256")
 
 git add "$plist" "$versionfile"
 git commit -q --allow-empty -m "release: $version"
 trap - ERR
-git tag -a "v$version" -m "Albert AI Usage $version"
+git tag -a "v$version" -m "AI Usage $version"
 echo "Built $dmg"
-cat "build/AlbertAIUsage-$version.dmg.sha256"
+cat "build/AIUsage-$version.dmg.sha256"
 
 if [[ "$publish" == "--publish" ]]; then
     # Use the gh login for this push, whatever credential helper git is configured with.
     git -c credential.helper= -c 'credential.helper=!gh auth git-credential' push origin main "v$version"
-    gh release create "v$version" "$dmg" "build/AlbertAIUsage-$version.dmg.sha256" \
-        --title "Albert AI Usage $version" --generate-notes
+    gh release create "v$version" "$dmg" "build/AIUsage-$version.dmg.sha256" \
+        --title "AI Usage $version" --generate-notes
 else
     echo "Not published. To publish: git push origin main v$version && gh release create v$version $dmg"
 fi

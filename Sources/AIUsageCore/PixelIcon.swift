@@ -97,7 +97,7 @@ public enum PixelFont {
 public enum StatusIcons {
     public static let green = RGB(52, 199, 89), orange = RGB(255, 149, 0), red = RGB(255, 59, 48)
     public static let placeholder = IconSpec(top: "AI", bottom: "--", topColor: .gray, bottomColor: .gray,
-                                             accessibility: "Albert AI Usage")
+                                             accessibility: "AI Usage")
 
     /// Green below 70%, orange from 70%, red from 90%.
     public static func severity(_ percent: Double) -> RGB {

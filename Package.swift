@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "AlbertAIUsage",
+    name: "AIUsage",
     platforms: [.macOS(.v13)],
     targets: [
-        .target(name: "AlbertUsageCore"),
-        .executableTarget(name: "CoreChecks", dependencies: ["AlbertUsageCore"]),
-        .executableTarget(name: "AlbertAIUsage", dependencies: ["AlbertUsageCore"]),
+        .target(name: "AIUsageCore"),
+        .executableTarget(name: "CoreChecks", dependencies: ["AIUsageCore"]),
+        .executableTarget(name: "AIUsage", dependencies: ["AIUsageCore"]),
     ],
     swiftLanguageModes: [.v5]
 )

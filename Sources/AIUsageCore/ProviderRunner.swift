@@ -61,7 +61,7 @@ public struct ProviderRunner {
         }
         // Each run starts in an empty temporary folder.
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("albert-ai-usage-\(UUID().uuidString)")
+            .appendingPathComponent("ai-usage-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 

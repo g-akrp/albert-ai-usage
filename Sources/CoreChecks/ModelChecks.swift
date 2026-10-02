@@ -1,4 +1,4 @@
-import AlbertUsageCore
+import AIUsageCore
 import Foundation
 
 func jsonChecks() {
@@ -70,7 +70,7 @@ func mappingChecks() {
     // Claude: ISO 8601 with microseconds, and a missing window is skipped.
     let claude = bundledConfig("claude")!
     let claudeAnswer = json(#"""
-    {"type": "control_response", "response": {"request_id": "albert-usage", "response": {
+    {"type": "control_response", "response": {"request_id": "ai-usage", "response": {
       "subscription_type": "max", "rate_limits_available": true,
       "rate_limits": {"five_hour": {"utilization": 14, "resets_at": "2026-10-05T12:16:59.123456+00:00"},
                       "seven_day": null}}}}

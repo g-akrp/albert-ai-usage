@@ -1,4 +1,4 @@
-import AlbertUsageCore
+import AIUsageCore
 import Foundation
 
 func environmentChecks() {
@@ -20,10 +20,10 @@ func environmentChecks() {
     let real = ChildEnvironment(process: ["PATH": "/usr/bin:/bin"], loginShell: nil, home: NSHomeDirectory())
     check("resolveOnPath", real.resolveExecutable("sh") == "/bin/sh")
     check("resolveAbsolute", real.resolveExecutable("/bin/sh") == "/bin/sh")
-    check("resolveMissing", real.resolveExecutable("no-such-tool-albert") == nil)
+    check("resolveMissing", real.resolveExecutable("no-such-tool-ai-usage") == nil)
     check("resolveRejectsRelativePath", real.resolveExecutable("bin/sh") == nil)
 
-    let printed = Data("motd noise\n\n__ALBERT_AI_USAGE_ENV__\nPATH=/a:/b\0https_proxy=http://p=1\0".utf8)
+    let printed = Data("motd noise\n\n__AI_USAGE_ENV__\nPATH=/a:/b\0https_proxy=http://p=1\0".utf8)
     check("parseLoginShellOutput", ChildEnvironment.parseEnvOutput(printed) == ["PATH": "/a:/b", "https_proxy": "http://p=1"])
     let shell = ChildEnvironment.readLoginShell(shell: "/bin/zsh")
     check("readLoginShellHasPath", shell?["PATH"]?.isEmpty == false)
@@ -63,7 +63,7 @@ func runnerChecks() {
     check("commandNoToken", percent(runner.run(shellConfig(
         "command", #"[ -z "$GITHUB_TOKEN" ] && [ "$TERM" = dumb ] && echo '{"used": 1}'"#))) == 1)
     check("commandRunsInEmptyFolder", percent(runner.run(shellConfig(
-        "command", #"[ -z "$(ls -A)" ] && case "$PWD" in *albert-ai-usage-*) echo '{"used": 2}';; esac"#))) == 2)
+        "command", #"[ -z "$(ls -A)" ] && case "$PWD" in *ai-usage-*) echo '{"used": 2}';; esac"#))) == 2)
     check("commandStdinIsEmpty", percent(runner.run(shellConfig("command", #"cat; echo '{"used": 3}'"#))) == 3)
     check("commandExpectMatch", failure(runner.run(shellConfig(
         "command", #"echo '{"status": "FAIL", "used": 1}'"#,
@@ -101,8 +101,8 @@ func runnerChecks() {
         && Date().timeIntervalSince(start) < 3)
     check("stdioEarlyExitNoCrash", failure(runner.run(shellConfig("stdio", "exit 0", extra: steps))).isEmpty == false)
 
-    let missing = try! config(#"{"schemaVersion": 1, "id": "m", "revision": 1, "name": "M", "source": {"type": "command", "executable": "no-such-tool-albert"}, "map": {"meters": []}}"#)
-    check("missingExecutable", failure(runner.run(missing)) == "no-such-tool-albert not found on PATH")
+    let missing = try! config(#"{"schemaVersion": 1, "id": "m", "revision": 1, "name": "M", "source": {"type": "command", "executable": "no-such-tool-ai-usage"}, "map": {"meters": []}}"#)
+    check("missingExecutable", failure(runner.run(missing)) == "no-such-tool-ai-usage not found on PATH")
 }
 
 private func processExists(matching pattern: String) -> Bool {

@@ -11,11 +11,11 @@
     "args": ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--no-session-persistence"],
     "timeoutSeconds": 90,
     "steps": [
-      { "write": { "type": "control_request", "request_id": "albert-usage", "request": { "subtype": "get_usage", "skip_behaviors": true } } },
+      { "write": { "type": "control_request", "request_id": "ai-usage", "request": { "subtype": "get_usage", "skip_behaviors": true } } },
       { "await": {
           "match": [
             { "path": "/type", "equals": "control_response" },
-            { "path": "/response/request_id", "equals": "albert-usage" }
+            { "path": "/response/request_id", "equals": "ai-usage" }
           ],
           "error": "/response/error",
           "require": "/response/response",

@@ -1,4 +1,4 @@
-import AlbertUsageCore
+import AIUsageCore
 import Foundation
 
 var failures: [String] = []

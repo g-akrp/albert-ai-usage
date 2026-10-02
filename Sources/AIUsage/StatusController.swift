@@ -1,4 +1,4 @@
-import AlbertUsageCore
+import AIUsageCore
 import AppKit
 import ServiceManagement
 
@@ -55,8 +55,15 @@ final class StatusController: NSObject, NSMenuDelegate {
         ) { [weak self] _ in self?.poller.tick() }
     }
 
-    /// The SwiftBar plugin stored its pin in a file.
+    /// Versions before 1.3.0 were Albert AI Usage (bundle id local.albert-ai-usage), and the
+    /// SwiftBar plugin stored its pin in a file. Settings from either are read once.
     private func migrateOldPin() {
+        if !defaults.bool(forKey: "migratedFromAlbert"), let old = UserDefaults(suiteName: "local.albert-ai-usage") {
+            for key in ["pinnedProvider", "disabledProviders"] where defaults.object(forKey: key) == nil {
+                if let value = old.object(forKey: key) { defaults.set(value, forKey: key) }
+            }
+            defaults.set(true, forKey: "migratedFromAlbert")
+        }
         guard defaults.object(forKey: "pinnedProvider") == nil else { return }
         let file = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".config/albert-ai-usage/pinned")
         if let id = try? String(contentsOf: file, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
@@ -186,7 +193,7 @@ final class StatusController: NSObject, NSMenuDelegate {
         case .openProvidersFolder:
             return action("Open Providers Folder…", #selector(openProvidersFolder))
         case .quit:
-            return action("Quit Albert AI Usage", #selector(quit), key: "q")
+            return action("Quit AI Usage", #selector(quit), key: "q")
         }
     }
 

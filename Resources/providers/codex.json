@@ -11,7 +11,7 @@
     "args": ["app-server", "--stdio"],
     "timeoutSeconds": 20,
     "steps": [
-      { "write": { "id": 1, "method": "initialize", "params": { "clientInfo": { "name": "albert-ai-usage", "version": "1" } } } },
+      { "write": { "id": 1, "method": "initialize", "params": { "clientInfo": { "name": "ai-usage", "version": "1" } } } },
       { "await": { "match": [{ "path": "/id", "equals": 1 }], "error": "/error", "require": "/result" } },
       { "write": { "id": 2, "method": "account/rateLimits/read", "params": { "excludeResetCreditDetails": true } } },
       { "await": { "match": [{ "path": "/id", "equals": 2 }], "error": "/error", "require": "/result", "capture": "limits" } }

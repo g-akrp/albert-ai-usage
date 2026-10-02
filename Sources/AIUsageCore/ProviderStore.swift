@@ -4,7 +4,7 @@ import Foundation
 /// the same id replaces the bundled one.
 public enum ProviderStore {
     public static func userFolder(home: String) -> URL {
-        URL(fileURLWithPath: home).appendingPathComponent(".config/albert-ai-usage/providers")
+        URL(fileURLWithPath: home).appendingPathComponent(".config/ai-usage/providers")
     }
 
     /// Configs sorted by id, and one message per file that did not load.

@@ -1,4 +1,4 @@
-import AlbertUsageCore
+import AIUsageCore
 import Foundation
 
 signal(SIGPIPE, SIG_IGN)

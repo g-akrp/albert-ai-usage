@@ -1,4 +1,4 @@
-import AlbertUsageCore
+import AIUsageCore
 import Foundation
 
 /// Runs each provider on its own interval, at most two at a time, and keeps the latest results.

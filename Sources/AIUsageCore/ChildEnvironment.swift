@@ -62,7 +62,7 @@ public struct ChildEnvironment {
 
     // MARK: Login shell
 
-    static let marker = "__ALBERT_AI_USAGE_ENV__"
+    static let marker = "__AI_USAGE_ENV__"
 
     /// Runs the user's shell as an interactive login shell and returns its environment, or `nil`.
     /// Anything the shell's startup files print before the marker is ignored.

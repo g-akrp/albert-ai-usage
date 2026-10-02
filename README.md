@@ -1,4 +1,4 @@
-# Albert AI Usage
+# AI Usage
 
 A small native macOS menu bar app that shows plan usage for AI coding agents: Claude Code, Codex, GitHub Copilot, and Antigravity. It replaces the Rust core and SwiftBar plugin that used to live in this repository (still in git history).
 
@@ -15,14 +15,16 @@ Requires macOS 13 or later, and the provider CLIs you want to see: `claude`, `co
 
 ## Install and update (release DMG)
 
-1. Download `AlbertAIUsage-<version>.dmg` from the GitHub release (the repository is private, so you need access).
-2. Open it and drag **AlbertAIUsage** onto **Applications**.
+1. Download `AIUsage-<version>.dmg` from the GitHub release (the repository is private, so you need access).
+2. Open it and drag **AI Usage** onto **Applications**.
 3. First launch: macOS blocks the app because it is signed ad hoc, not with a paid Apple Developer ID. Open it once, then go to System Settings › Privacy & Security and choose **Open Anyway**.
 4. Optional: choose **Launch at Login** in the menu.
 
 To update: quit the app (menu › Quit), install the new DMG the same way (replace the old app), and open it. The installed version is shown at the bottom of the menu.
 
-To check a download: `shasum -a 256 -c AlbertAIUsage-<version>.dmg.sha256` in the download folder.
+To check a download: `shasum -a 256 -c AIUsage-<version>.dmg.sha256` in the download folder.
+
+Versions before 1.3.0 were called Albert AI Usage (`AlbertAIUsage.app`). Quit it and delete it after installing AI Usage; your pin and provider switches carry over. Turn **Launch at Login** on again, because it belongs to the old app.
 
 If you used the SwiftBar plugin, remove its symlink `albert-usage.30s.sh` from SwiftBar's plugin folder. The app reads the plugin's old pin (`~/.config/albert-ai-usage/pinned`) once on first launch.
 
@@ -36,7 +38,7 @@ A provider is a JSON file, not code: which program to run and how to read its an
 - `match` on a meter or window: the same predicates as `expect`; a value where one fails is skipped. Copilot uses it to skip quotas that do not apply: `has_quota` false (Copilot Free has no premium requests, reported as 0% remaining) or `unlimited` true.
 - `accounts`: run the provider once per account. Its `source` lists the accounts, `each` points to the list, `id` to each account's name, and an optional `match` filters them. `${account}` in the provider's `args` and `env` is replaced by the name. Copilot lists `gh auth status --json hosts` and runs `gh api` with `GH_TOKEN` set from `gh auth token --user <account>` inside that child process only; the token is never stored.
 
-The app ships `Resources/providers/*.json`. To add a provider or change a shipped one, choose **Open Providers Folder…** and put a `<id>.json` file in `~/.config/albert-ai-usage/providers/`. A file there with the same id replaces the shipped one. Files are reread on **Refresh Now**; a file that does not load is listed in the menu with the reason.
+The app ships `Resources/providers/*.json`. To add a provider or change a shipped one, choose **Open Providers Folder…** and put a `<id>.json` file in `~/.config/ai-usage/providers/`. A file there with the same id replaces the shipped one. Files are reread on **Refresh Now**; a file that does not load is listed in the menu with the reason.
 
 How providers run:
 
@@ -52,16 +54,16 @@ scripts/release.sh 1.1.0            # build locally: version, checks, DMG, commi
 scripts/release.sh 1.1.0 --publish  # also push main and the tag, and create the GitHub release
 ```
 
-The script runs only on a `main` without uncommitted changes to tracked files. It sets `CFBundleShortVersionString` (and increments `CFBundleVersion`) in `Resources/Info.plist` and `AppVersion.current`, runs `swift run CoreChecks`, builds the app, and writes `build/AlbertAIUsage-<version>.dmg` with a `.sha256` file. If anything fails before the release commit, the version edits are undone. Publishing needs the `gh` CLI logged in and an `origin` remote.
+The script runs only on a `main` without uncommitted changes to tracked files. It sets `CFBundleShortVersionString` (and increments `CFBundleVersion`) in `Resources/Info.plist` and `AppVersion.current`, runs `swift run CoreChecks`, builds the app, and writes `build/AIUsage-<version>.dmg` with a `.sha256` file. If anything fails before the release commit, the version edits are undone. Publishing needs the `gh` CLI logged in and an `origin` remote.
 
 ## Build from source
 
 ```
 scripts/build-app.sh
-open ~/Applications/AlbertAIUsage.app
+open ~/Applications/"AI Usage.app"
 ```
 
-The script builds the app, wraps it with the provider files in `AlbertAIUsage.app`, signs it ad hoc, and copies it to `~/Applications`. Only the Xcode Command Line Tools are needed.
+The script builds the app, wraps it with the provider files in `AI Usage.app`, signs it ad hoc, and copies it to `~/Applications`. Only the Xcode Command Line Tools are needed.
 
 The app icon (`Resources/AppIcon.icns`) is drawn by `scripts/make-icon.swift` in the same pixel style. To change it, edit that script and run `swift scripts/make-icon.swift`.
 
@@ -78,8 +80,8 @@ The checks live in an executable target, not XCTest, because XCTest and Swift Te
 
 | Path | What |
 |------|------|
-| `Sources/AlbertUsageCore/` | Provider format parsing, mapping, process runner, environment, pixel font, menu model |
-| `Sources/AlbertAIUsage/` | AppKit shell: `StatusController` (icon, menu), `Poller` (schedule) |
+| `Sources/AIUsageCore/` | Provider format parsing, mapping, process runner, environment, pixel font, menu model |
+| `Sources/AIUsage/` | AppKit shell: `StatusController` (icon, menu), `Poller` (schedule) |
 | `Sources/CoreChecks/` | Check runner |
 | `Resources/` | `Info.plist`, `AppIcon.icns`, shipped `providers/` |
 | `example/` | Maestri's provider format guide and its shipped examples |
