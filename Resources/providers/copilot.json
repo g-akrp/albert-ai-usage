@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "copilot",
-  "revision": 1,
+  "revision": 2,
   "name": "GitHub Copilot",
   "iconLabel": "GHC",
   "iconColor": "8957E5",
@@ -19,6 +19,7 @@
     "meters": [
       {
         "select": "/quota_snapshots/chat",
+        "match": [{ "path": "/has_quota", "equals": true }, { "path": "/unlimited", "equals": false }],
         "id": "chat",
         "label": { "text": "Chat" },
         "windows": [
@@ -27,6 +28,7 @@
       },
       {
         "select": "/quota_snapshots/completions",
+        "match": [{ "path": "/has_quota", "equals": true }, { "path": "/unlimited", "equals": false }],
         "id": "completions",
         "label": { "text": "Completions" },
         "windows": [
@@ -35,6 +37,7 @@
       },
       {
         "select": "/quota_snapshots/premium_interactions",
+        "match": [{ "path": "/has_quota", "equals": true }, { "path": "/unlimited", "equals": false }],
         "id": "premium_interactions",
         "label": { "text": "Premium Interactions" },
         "windows": [

@@ -77,6 +77,17 @@ public struct Predicate {
     public enum Test { case equals(Any), exists(Bool) }
     public let path: String
     public let test: Test
+
+    /// True when every predicate holds for `value`; an empty list always holds.
+    public static func allHold(_ predicates: [Predicate], in value: Any) -> Bool {
+        predicates.allSatisfy { predicate in
+            let found = JSON.resolve(value, predicate.path)
+            switch predicate.test {
+            case .exists(let expected): return (found != nil) == expected
+            case .equals(let expected): return found.map { JSON.equal($0, expected) } ?? false
+            }
+        }
+    }
 }
 
 public struct MapSpec {
@@ -114,6 +125,8 @@ public indirect enum LabelSpec {
 
 public struct MeterSpec {
     public let scope: Scope
+    /// Project extension: values in scope where any predicate fails are skipped.
+    public let match: [Predicate]
     public let id: IdSpec
     public let label: LabelSpec
     public let windows: [WindowSpec]
@@ -121,6 +134,8 @@ public struct MeterSpec {
 
 public struct WindowSpec {
     public let scope: Scope
+    /// Project extension: values in scope where any predicate fails are skipped.
+    public let match: [Predicate]
     public let id: IdSpec
     public let label: LabelSpec?
     public let used: (path: String, as: UsedAs)?
@@ -198,7 +213,12 @@ extension ProviderConfig {
     }
 
     private static func parseExpect(_ p: Reader) throws -> Expect {
-        let predicates = try p.optional("match")?.elements().map { item -> Predicate in
+        Expect(match: try parsePredicates(p), error: try p.optionalString("error"),
+               require: try p.optionalString("require"), capture: try p.optionalString("capture"))
+    }
+
+    private static func parsePredicates(_ p: Reader) throws -> [Predicate] {
+        try p.optional("match")?.elements().map { item -> Predicate in
             let path = try item.string("path")
             if let exists = try item.optional("exists") {
                 guard let flag = JSON.bool(exists.value) else { throw ConfigError(exists.path, "expected a boolean") }
@@ -208,9 +228,7 @@ extension ProviderConfig {
                 throw ConfigError(item.path, "expected \"equals\" or \"exists\"")
             }
             return Predicate(path: path, test: .equals(equals.value))
-        }
-        return Expect(match: predicates ?? [], error: try p.optionalString("error"),
-                      require: try p.optionalString("require"), capture: try p.optionalString("capture"))
+        } ?? []
     }
 
     private static func parseMap(_ p: Reader) throws -> MapSpec {
@@ -222,7 +240,7 @@ extension ProviderConfig {
             },
             access: try p.optional("access").map { try $0.string("path") },
             meters: try p.child("meters").elements().map { m in
-                MeterSpec(scope: try parseScope(m), id: try parseId(m.child("id")),
+                MeterSpec(scope: try parseScope(m), match: try parsePredicates(m), id: try parseId(m.child("id")),
                           label: try parseLabel(m.child("label")),
                           windows: try m.child("windows").elements().map(parseWindow))
             })
@@ -231,6 +249,7 @@ extension ProviderConfig {
     private static func parseWindow(_ p: Reader) throws -> WindowSpec {
         WindowSpec(
             scope: try parseScope(p),
+            match: try parsePredicates(p),
             id: try parseId(p.child("id")),
             label: try p.optional("label").map(parseLabel),
             used: try p.optional("used").map { u in

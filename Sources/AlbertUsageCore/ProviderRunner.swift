@@ -111,13 +111,7 @@ public struct ProviderRunner {
     // MARK: Checks on an answer
 
     static func matches(_ value: Any, _ predicates: [Predicate]) -> Bool {
-        predicates.allSatisfy { predicate in
-            let found = JSON.resolve(value, predicate.path)
-            switch predicate.test {
-            case .exists(let expected): return (found != nil) == expected
-            case .equals(let expected): return found.map { JSON.equal($0, expected) } ?? false
-            }
-        }
+        Predicate.allHold(predicates, in: value)
     }
 
     /// `error`: present and not null fails the run with its text. `require`: must be present and not null.

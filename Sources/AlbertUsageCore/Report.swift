@@ -83,7 +83,7 @@ public enum Mapper {
 
     private static func mapMeter(_ spec: MeterSpec, _ root: Any) -> [MeterReport] {
         scoped(root, spec.scope).compactMap { key, value in
-            guard let id = resolveId(spec.id, value, key),
+            guard Predicate.allHold(spec.match, in: value), let id = resolveId(spec.id, value, key),
                   let label = resolveLabel(spec.label, value, key) else { return nil }
             var windows: [WindowReport] = []
             for windowSpec in spec.windows {
@@ -100,7 +100,7 @@ public enum Mapper {
             let used = spec.used.flatMap { Convert.usedPercent(JSON.resolve(value, $0.path), $0.as) }
             let resets = spec.resetsAt.flatMap { Convert.date(JSON.resolve(value, $0.path), $0.as) }
             // A window with neither a usage value nor a reset time is skipped.
-            guard used != nil || resets != nil, let id = resolveId(spec.id, value, key) else { return nil }
+            guard Predicate.allHold(spec.match, in: value), used != nil || resets != nil, let id = resolveId(spec.id, value, key) else { return nil }
             let duration = spec.duration.flatMap { Convert.durationSeconds(value, $0) }
             return WindowReport(
                 id: id,

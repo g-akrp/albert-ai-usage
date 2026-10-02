@@ -84,11 +84,21 @@ func mappingChecks() {
     // Copilot: remaining percent inverted.
     let copilot = bundledConfig("copilot")!
     let copilotReport = Mapper.apply(copilot.map, to: json(#"""
-    {"copilot_plan": "business", "quota_snapshots": {"chat": {"percent_remaining": 100},
-      "completions": {"percent_remaining": 100}, "premium_interactions": {"percent_remaining": 40.25}}}
+    {"copilot_plan": "business", "quota_snapshots": {
+      "chat": {"percent_remaining": 100, "has_quota": true, "unlimited": true},
+      "completions": {"percent_remaining": 100, "has_quota": true, "unlimited": false},
+      "premium_interactions": {"percent_remaining": 40.25, "has_quota": true, "unlimited": false}}}
     """#))
-    check("copilotMeters", copilotReport.meters.map(\.label) == ["Chat", "Completions", "Premium Interactions"])
+    check("copilotMeters", copilotReport.meters.map(\.label) == ["Completions", "Premium Interactions"])
     check("copilotRemainingPercent", copilotReport.meters.last?.windows.first?.usedPercent == 59.75)
+    // Copilot Free: premium interactions have no quota (entitlement 0, percent_remaining 0), not 100% used.
+    let freeReport = Mapper.apply(copilot.map, to: json(#"""
+    {"copilot_plan": "individual", "quota_snapshots": {
+      "chat": {"percent_remaining": 100.0, "has_quota": true, "unlimited": false, "entitlement": 200},
+      "completions": {"percent_remaining": 100.0, "has_quota": true, "unlimited": false, "entitlement": 2000},
+      "premium_interactions": {"percent_remaining": 0.0, "has_quota": false, "unlimited": false, "entitlement": 0}}}
+    """#))
+    check("copilotSkipsNoQuota", freeReport.meters.map(\.id) == ["chat", "completions"] && freeReport.maxPercent == 0)
 
     // Antigravity: each group, each bucket, remaining fraction.
     let agy = bundledConfig("antigravity")!
@@ -179,7 +189,7 @@ func menuChecks() {
     check("menuLimitReached", limitedEntries.contains(.detail("\u{00A0}\u{00A0}\u{00A0}Usage limit reached", .red)))
     check("menuCycleChecked", limitedEntries.contains(.cycleAll(checked: true)))
 
-    let copilot = Mapper.apply(bundledConfig("copilot")!.map, to: json(#"{"quota_snapshots": {"chat": {"percent_remaining": 100}}}"#))
+    let copilot = Mapper.apply(bundledConfig("copilot")!.map, to: json(#"{"quota_snapshots": {"chat": {"percent_remaining": 100, "has_quota": true, "unlimited": false}}}"#))
     let copilotEntries = MenuModel.entries(runs: [sampleRun("copilot", "GitHub Copilot", "GHC", .success(copilot))],
                                            pinned: nil, configErrors: [], updated: nil, launchAtLogin: false,
                                            version: "1", formatReset: utc.string(from:))

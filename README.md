@@ -25,7 +25,7 @@ If you used the SwiftBar plugin, remove its symlink `albert-usage.30s.sh` from S
 
 ## Providers
 
-A provider is a JSON file, not code: which program to run and how to read its answer. The format is the Maestri Agent Usage format, documented in [example/AGENTS.md](example/AGENTS.md), with three additions: `iconLabel` (the icon's top row, default the first three letters of the id), `iconColor` (`"RRGGBB"`, default gray), and `"as": "remainingPercent"` for `used` (0 to 100 left).
+A provider is a JSON file, not code: which program to run and how to read its answer. The format is the Maestri Agent Usage format, documented in [example/AGENTS.md](example/AGENTS.md), with four additions: `iconLabel` (the icon's top row, default the first three letters of the id), `iconColor` (`"RRGGBB"`, default gray), `"as": "remainingPercent"` for `used` (0 to 100 left), and `match` on a meter or window (the same predicates as `expect`; a value where one fails is skipped). Copilot uses `match` to skip quotas that do not apply: `has_quota` false (Copilot Free has no premium requests, reported as 0% remaining) or `unlimited` true.
 
 The app ships `Resources/providers/*.json`. To add a provider or change a shipped one, choose **Open Providers Folder…** and put a `<id>.json` file in `~/.config/albert-ai-usage/providers/`. A file there with the same id replaces the shipped one. Files are reread on **Refresh Now**; a file that does not load is listed in the menu with the reason.
 
