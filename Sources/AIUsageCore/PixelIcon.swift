@@ -108,21 +108,19 @@ public enum StatusIcons {
         String(format: "%.0f%%", percent)
     }
 
-    /// The pinned provider's icon if the pin is valid; otherwise one icon per provider, which the
-    /// menu bar cycles through. Providers still loading are left out of the cycle.
-    public static func icons(runs: [ProviderRun], pinned: String?) -> [IconSpec] {
-        if let (run, meterId) = Pin.resolve(pinned, in: runs) {
-            if let meterId, case .success(let report)? = run.result,
-               let meter = report.meters.first(where: { $0.id == meterId }), let percent = meter.maxPercent {
-                let text = percentText(percent)
-                return [IconSpec(top: label(for: meter.label), bottom: text, topColor: run.iconColor,
-                                 bottomColor: severity(percent), accessibility: "\(run.name) \(meter.label) \(text)")]
-            }
-            return [icon(for: run) ?? IconSpec(top: run.iconLabel, bottom: "--", topColor: run.iconColor,
-                                               bottomColor: .gray, accessibility: "\(run.name) no usage data")]
+    /// The icon for the pin (see `Pin.effective`): a provider, or one limit of it. Nothing is cycled.
+    public static func icon(runs: [ProviderRun], pinned: String?) -> IconSpec {
+        guard let effective = Pin.effective(pinned, in: runs), let (run, meterId) = Pin.resolve(effective, in: runs) else {
+            return placeholder
         }
-        let icons = runs.compactMap(icon(for:))
-        return icons.isEmpty ? [placeholder] : icons
+        if let meterId, case .success(let report)? = run.result,
+           let meter = report.meters.first(where: { $0.id == meterId }), let percent = meter.maxPercent {
+            let text = percentText(percent)
+            return IconSpec(top: label(for: meter.label), bottom: text, topColor: run.iconColor,
+                            bottomColor: severity(percent), accessibility: "\(run.name) \(meter.label) \(text)")
+        }
+        return icon(for: run) ?? IconSpec(top: run.iconLabel, bottom: "--", topColor: run.iconColor,
+                                          bottomColor: .gray, accessibility: "\(run.name) no usage data")
     }
 
     /// Top row for a pinned meter: the first three letters or digits of its label, for example GEM.
@@ -157,11 +155,18 @@ public struct ProviderRun: Equatable {
     public var result: Result<Report, ProviderFailure>?
     /// The provider file this run came from; differs from `id` for one account of several.
     public let configId: String
+    /// The provider's own name, without the account. `name` is the same for a provider without accounts.
+    public let providerName: String
+    /// The account this run is for, when the provider runs once per account.
+    public let account: String?
 
     public init(id: String, name: String, iconLabel: String, iconColor: RGB,
-                result: Result<Report, ProviderFailure>? = nil, configId: String? = nil) {
+                result: Result<Report, ProviderFailure>? = nil, configId: String? = nil,
+                providerName: String? = nil, account: String? = nil) {
         (self.id, self.name, self.iconLabel, self.iconColor, self.result) = (id, name, iconLabel, iconColor, result)
         self.configId = configId ?? id
+        self.providerName = providerName ?? name
+        self.account = account
     }
 
     public init(config: ProviderConfig, result: Result<Report, ProviderFailure>? = nil) {
@@ -185,5 +190,29 @@ public enum Pin {
         if let run = runs.first(where: { $0.id == runId }) { return (run, meter) }
         if meter == nil, let run = runs.first(where: { $0.configId == runId }) { return (run, nil) }
         return nil
+    }
+
+    /// A pin that is always valid for the runs shown: a missing provider becomes the first one; a
+    /// provider-level pin on a provider with groups, or a limit that is gone from a loaded report,
+    /// becomes the provider's title pin (its first group). A provider still loading or failing keeps
+    /// its pin, so a limit pin survives a slow start. `nil` only when there are no runs.
+    public static func effective(_ pin: String?, in runs: [ProviderRun]) -> String? {
+        guard let first = runs.first else { return nil }
+        guard let (run, meter) = resolve(pin, in: runs) else {
+            // One account's pin (`copilot:octocat`) while its provider file has not produced accounts yet
+            // (loading, or listing accounts failed): keep it.
+            if let pin, runs.contains(where: { run in
+                if case .success? = run.result { return false }
+                return pin.hasPrefix(run.configId + ":") && run.id == run.configId
+            }) { return pin }
+            return CardModel.titlePin(first)
+        }
+        switch run.result {
+        case .success(let report)?:
+            if let meter, report.meters.contains(where: { $0.id == meter }) { return key(run: run.id, meter: meter) }
+            return CardModel.titlePin(run)
+        case .failure?, nil:
+            return meter.map { key(run: run.id, meter: $0) } ?? run.id
+        }
     }
 }

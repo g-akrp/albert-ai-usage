@@ -18,6 +18,7 @@ runnerChecks()
 accountChecks()
 pinChecks()
 toggleChecks()
+cardChecks()
 
 if failures.isEmpty {
     print("ALL PASS")

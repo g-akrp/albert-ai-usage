@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "copilot",
-  "revision": 3,
+  "revision": 4,
   "name": "GitHub Copilot",
   "iconLabel": "GHC",
   "iconColor": "8957E5",
@@ -53,7 +53,7 @@
       },
       {
         "select": "/quota_snapshots/premium_interactions",
-        "match": [{ "path": "/has_quota", "equals": true }, { "path": "/unlimited", "equals": false }],
+        "match": [{ "path": "/entitlement", "notEquals": 0 }, { "path": "/unlimited", "equals": false }],
         "id": "premium_interactions",
         "label": { "text": "Premium Interactions" },
         "windows": [

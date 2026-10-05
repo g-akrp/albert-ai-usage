@@ -100,9 +100,11 @@ public struct Expect {
 }
 
 public struct Predicate {
-    public enum Test { case equals(Any), exists(Bool) }
+    public enum Test { case equals(Any), notEquals(Any), exists(Bool) }
     public let path: String
     public let test: Test
+
+    public init(path: String, test: Test) { (self.path, self.test) = (path, test) }
 
     /// True when every predicate holds for `value`; an empty list always holds.
     public static func allHold(_ predicates: [Predicate], in value: Any) -> Bool {
@@ -111,6 +113,7 @@ public struct Predicate {
             switch predicate.test {
             case .exists(let expected): return (found != nil) == expected
             case .equals(let expected): return found.map { JSON.equal($0, expected) } ?? false
+            case .notEquals(let expected): return found.map { !JSON.equal($0, expected) } ?? true
             }
         }
     }
@@ -254,8 +257,11 @@ extension ProviderConfig {
                 guard let flag = JSON.bool(exists.value) else { throw ConfigError(exists.path, "expected a boolean") }
                 return Predicate(path: path, test: .exists(flag))
             }
+            if let notEquals = try item.optional("notEquals") {
+                return Predicate(path: path, test: .notEquals(notEquals.value))
+            }
             guard let equals = try item.optional("equals") else {
-                throw ConfigError(item.path, "expected \"equals\" or \"exists\"")
+                throw ConfigError(item.path, "expected \"equals\", \"notEquals\", or \"exists\"")
             }
             return Predicate(path: path, test: .equals(equals.value))
         } ?? []

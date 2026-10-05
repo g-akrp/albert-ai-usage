@@ -100,6 +100,18 @@ func mappingChecks() {
     """#))
     check("copilotSkipsNoQuota", freeReport.meters.map(\.id) == ["chat", "completions"] && freeReport.maxPercent == 0)
 
+    // Copilot Business out of premium requests: has_quota is false but the entitlement is not 0, so it is 100% used.
+    let exhausted = Mapper.apply(copilot.map, to: json(#"""
+    {"copilot_plan": "business", "quota_snapshots": {
+      "chat": {"percent_remaining": 100.0, "has_quota": true, "unlimited": true, "entitlement": 0},
+      "completions": {"percent_remaining": 100.0, "has_quota": true, "unlimited": true, "entitlement": 0},
+      "premium_interactions": {"percent_remaining": 0.0, "has_quota": false, "unlimited": false, "entitlement": 5000}}}
+    """#))
+    check("copilotShowsExhaustedQuota", exhausted.meters.map(\.id) == ["premium_interactions"] && exhausted.maxPercent == 100)
+    check("notEqualsPredicate", Predicate.allHold([Predicate(path: "/a", test: .notEquals(0))], in: json(#"{"a": 5}"#))
+          && !Predicate.allHold([Predicate(path: "/a", test: .notEquals(0))], in: json(#"{"a": 0}"#))
+          && Predicate.allHold([Predicate(path: "/a", test: .notEquals(0))], in: json(#"{}"#)))
+
     // Antigravity: each group, each bucket, remaining fraction.
     let agy = bundledConfig("antigravity")!
     let agyReport = Mapper.apply(agy.map, to: json(#"""
@@ -154,46 +166,60 @@ func iconChecks() {
     let copilot = sampleRun("copilot", "GitHub Copilot", "GHC", .success(sampleReport(10)))
     let failed = sampleRun("codex", "Codex", "CDX", .failure(ProviderFailure("timed out")))
 
-    let pinnedIcons = StatusIcons.icons(runs: [codex, copilot], pinned: "codex")
-    check("pinnedShowsOne", pinnedIcons.count == 1 && pinnedIcons[0].accessibility == "Codex 45%")
-    check("pinnedColors", pinnedIcons[0].topColor == RGB(0, 130, 0) && pinnedIcons[0].bottomColor == StatusIcons.green)
-    check("unpinnedCycles", StatusIcons.icons(runs: [codex, copilot], pinned: nil).count == 2)
-    check("stalePinCycles", StatusIcons.icons(runs: [codex], pinned: "removed").map(\.accessibility) == ["Codex 45%"])
-    let errorIcon = StatusIcons.icons(runs: [failed, copilot], pinned: "codex")
-    check("erroredPin", errorIcon.map(\.bottom) == ["ERR"] && errorIcon[0].accessibility == "Codex error: timed out")
-    check("cycleIncludesErrors", StatusIcons.icons(runs: [failed, copilot], pinned: nil).map(\.bottom) == ["ERR", "10%"])
-    check("loadingLeftOut", StatusIcons.icons(runs: [sampleRun("a", "A", "A", nil), copilot], pinned: nil).count == 1)
-    check("nothingLoadedPlaceholder", StatusIcons.icons(runs: [sampleRun("a", "A", "A", nil)], pinned: nil) == [StatusIcons.placeholder])
+    let pinnedIcon = StatusIcons.icon(runs: [codex, copilot], pinned: "codex")
+    check("pinnedShowsOne", pinnedIcon.accessibility == "Codex 45%")
+    check("pinnedColors", pinnedIcon.topColor == RGB(0, 130, 0) && pinnedIcon.bottomColor == StatusIcons.green)
+    check("stalePinFallsBack", StatusIcons.icon(runs: [codex], pinned: "removed").accessibility == "Codex 45%")
+    check("noPinDefaultsToFirst", StatusIcons.icon(runs: [codex, copilot], pinned: nil).accessibility == "Codex 45%")
+    let errorIcon = StatusIcons.icon(runs: [failed, copilot], pinned: "codex")
+    check("erroredPin", errorIcon.bottom == "ERR" && errorIcon.accessibility == "Codex error: timed out")
+    let loadingIcon = StatusIcons.icon(runs: [sampleRun("a", "A", "A", nil), copilot], pinned: nil)
+    check("loadingPinShowsDashes", loadingIcon.top == "A" && loadingIcon.bottom == "--")
+    check("noRunsPlaceholder", StatusIcons.icon(runs: [], pinned: "codex") == StatusIcons.placeholder)
+
+    let groupRun = sampleRun("antigravity", "Antigravity", "AGY", .success(Report(meters: [
+        MeterReport(id: "Gemini Models", label: "Gemini Models", windows: [WindowReport(id: "w", label: "Weekly", usedPercent: 7)]),
+        MeterReport(id: "Claude and GPT models", label: "Claude and GPT models", windows: [WindowReport(id: "w", label: "Weekly", usedPercent: 95)]),
+    ])))
+    let firstGroup = Pin.key(run: "antigravity", meter: "Gemini Models")
+    check("effectiveDefault", Pin.effective(nil, in: [codex, copilot]) == "codex" && Pin.effective(nil, in: []) == nil)
+    check("effectiveGroupedProvider", Pin.effective("antigravity", in: [groupRun]) == firstGroup
+          && Pin.effective("antigravity|gone", in: [groupRun]) == firstGroup && Pin.effective(nil, in: [groupRun]) == firstGroup)
+    check("effectiveKeepsValidMeter", Pin.effective("antigravity|Claude and GPT models", in: [groupRun]) == "antigravity|Claude and GPT models")
+    let accountPin = "copilot:octocat|premium_interactions"
+    check("effectiveKeepsAccountPinWhileConfigRunLoads", Pin.effective(accountPin, in: [codex, sampleRun("copilot", "GitHub Copilot", "GHC", nil)]) == accountPin
+          && Pin.effective("copilot:octocat", in: [codex, sampleRun("copilot", "GitHub Copilot", "GHC", nil)]) == "copilot:octocat")
+    check("effectiveKeepsAccountPinWhenAccountListFails", Pin.effective(accountPin,
+          in: [codex, sampleRun("copilot", "GitHub Copilot", "GHC", .failure(ProviderFailure("gh failed")))]) == accountPin)
+    check("effectiveMissingProvider", Pin.effective("nope", in: [codex, groupRun]) == "codex")
+    check("effectiveKeepsPinWhileLoading", Pin.effective("antigravity|Claude and GPT models",
+          in: [sampleRun("antigravity", "Antigravity", "AGY", nil)]) == "antigravity|Claude and GPT models")
+    check("effectiveKeepsPinOnFailure", Pin.effective("antigravity|Claude and GPT models",
+          in: [sampleRun("antigravity", "Antigravity", "AGY", .failure(ProviderFailure("x")))]) == "antigravity|Claude and GPT models")
 }
 
 func menuChecks() {
     let utc = MenuModel.resetFormatter(timeZone: TimeZone(identifier: "UTC")!)
-    check("resetFormat", utc.string(from: Date(timeIntervalSince1970: 1791202619)) == "Oct 5, 2026 12:16 PM")
+    check("resetFormat", utc.string(from: Date(timeIntervalSince1970: 1791202619)) == "Oct 5, 12:16 PM")
 
     let codex = sampleRun("codex", "Codex", "CDX", .success(sampleReport(95)))
     let failed = sampleRun("copilot", "GitHub Copilot", "GHC", .failure(ProviderFailure("timed out")))
     let entries = MenuModel.entries(runs: [codex, failed], pinned: "codex", configErrors: ["bad.json: /id: required"],
                                     updated: "Updated 10:00", launchAtLogin: true, version: "1.0.0",
                                     formatReset: utc.string(from:))
-    check("menuPinnedTitle", entries.first == .provider(id: "codex", title: "\u{2605} Codex (Plus)", pinned: true))
-    check("menuWindowRow", entries.contains(.detail("\u{00A0}\u{00A0}\u{00A0}Session: 95% (resets Sep 29, 2026 11:23 AM)", .red)))
-    check("menuErrorRow", entries.contains(.detail("\u{00A0}\u{00A0}\u{00A0}Error: timed out", .red)))
-    check("menuUnpinnedStar", entries.contains(.provider(id: "copilot", title: "\u{2606} GitHub Copilot", pinned: false)))
+    let cards = entries.compactMap { entry -> Card? in if case .card(let card) = entry { return card }; return nil }
+    check("menuOneCardPerRun", cards.map(\.id) == ["codex", "copilot"])
+    check("menuCardPinState", cards.map(\.pinned) == [true, false])
+    check("menuCardError", cards[1].message == CardNotice(text: "Error: timed out", tone: .red))
     check("menuConfigError", entries.contains(.detail("bad.json: /id: required", .red)))
-    check("menuCycleUnchecked", entries.contains(.cycleAll(checked: false)))
-    check("menuEnds", Array(entries.suffix(2)) == [.version("1.0.0"), .quit])
+    check("menuEnds", Array(entries.suffix(3)) == [.version("AI Usage 1.0.0"), .credit(before: "Built with", after: "by g.akrp"), .quit])
+    check("menuDefaultPin", MenuModel.entries(runs: [codex, failed], pinned: nil, configErrors: [], updated: nil,
+          launchAtLogin: false, version: "1", formatReset: utc.string(from:)).contains { if case .card(let c) = $0 { return c.pinned && c.id == "codex" }; return false })
 
     let limited = sampleRun("codex", "Codex", "CDX", .success(Report(access: false, meters: [])))
     let limitedEntries = MenuModel.entries(runs: [limited], pinned: nil, configErrors: [], updated: nil,
                                            launchAtLogin: false, version: "1", formatReset: utc.string(from:))
-    check("menuLimitReached", limitedEntries.contains(.detail("\u{00A0}\u{00A0}\u{00A0}Usage limit reached", .red)))
-    check("menuCycleChecked", limitedEntries.contains(.cycleAll(checked: true)))
-
-    let copilot = Mapper.apply(bundledConfig("copilot")!.map, to: json(#"{"quota_snapshots": {"chat": {"percent_remaining": 100, "has_quota": true, "unlimited": false}}}"#))
-    let copilotEntries = MenuModel.entries(runs: [sampleRun("copilot", "GitHub Copilot", "GHC", .success(copilot))],
-                                           pinned: nil, configErrors: [], updated: nil, launchAtLogin: false,
-                                           version: "1", formatReset: utc.string(from:))
-    check("menuSingleWindowUsesMeterLabel", copilotEntries.contains(.detail("\u{00A0}\u{00A0}\u{00A0}Chat: 0%", .green)))
+    check("menuLimitReached", limitedEntries.contains { if case .card(let c) = $0 { return c.notices.first == CardNotice(text: "Usage limit reached", tone: .red) }; return false })
 
     check("scheduleInterval", Schedule.delay(interval: 300, failures: 0) == 300)
     check("scheduleBackoff", (1...8).map { Schedule.delay(interval: 300, failures: $0) } == [60, 120, 240, 480, 960, 1800, 1800, 1800])
@@ -215,13 +241,13 @@ func pinChecks() {
     let run = ProviderRun(id: "antigravity", name: "Antigravity", iconLabel: "AGY", iconColor: RGB(0x42, 0x85, 0xF4),
                           result: .success(agy))
     let gemini = Pin.key(run: "antigravity", meter: "Gemini Models")
-    let icon = StatusIcons.icons(runs: [run], pinned: gemini)
-    check("meterPinIcon", icon.map { "\($0.top)/\($0.bottom)" } == ["GEM/7%"] && icon[0].topColor == RGB(0x42, 0x85, 0xF4))
-    check("meterPinAccessibility", icon.first?.accessibility == "Antigravity Gemini Models 7%")
+    let icon = StatusIcons.icon(runs: [run], pinned: gemini)
+    check("meterPinIcon", "\(icon.top)/\(icon.bottom)" == "GEM/7%" && icon.topColor == RGB(0x42, 0x85, 0xF4))
+    check("meterPinAccessibility", icon.accessibility == "Antigravity Gemini Models 7%")
     check("meterLabel", [StatusIcons.label(for: "Claude and GPT models"), StatusIcons.label(for: "5-hour"), StatusIcons.label(for: "··")]
         == ["CLA", "5HO", "?"])
-    check("missingMeterFallsBackToProvider",
-          StatusIcons.icons(runs: [run], pinned: Pin.key(run: "antigravity", meter: "gone")).map(\.bottom) == ["3%"])
+    check("missingMeterFallsBackToFirstGroup",
+          StatusIcons.icon(runs: [run], pinned: Pin.key(run: "antigravity", meter: "gone")).accessibility == "Antigravity Gemini Models 7%")
     check("pinAccountFallback", Pin.resolve("copilot", in: [
         ProviderRun(id: "copilot:a", name: "A", iconLabel: "GH1", iconColor: .gray, configId: "copilot")])?.run.id == "copilot:a")
     check("pinUnknown", Pin.resolve("nope", in: [run]) == nil && Pin.resolve(nil, in: [run]) == nil)
@@ -229,12 +255,8 @@ func pinChecks() {
     let utc = MenuModel.resetFormatter(timeZone: TimeZone(identifier: "UTC")!)
     let entries = MenuModel.entries(runs: [run], pinned: gemini, configErrors: [], updated: nil, launchAtLogin: false,
                                     version: "1", formatReset: utc.string(from:))
-    let i = "\u{00A0}\u{00A0}\u{00A0}"
-    check("menuMeterRowPinned", entries.contains(.meter(pin: gemini, title: i + "\u{2605} Gemini Models", tone: .secondary, pinned: true)))
-    check("menuOtherMeterUnpinned", entries.contains(.meter(pin: Pin.key(run: "antigravity", meter: "Claude and GPT models"),
-                                                           title: i + "\u{2606} Claude and GPT models", tone: .secondary, pinned: false)))
-    check("menuProviderNotStarredForMeterPin", entries.first == .provider(id: "antigravity", title: "\u{2606} Antigravity", pinned: false))
-    check("menuMeterPinIsNotCycling", entries.contains(.cycleAll(checked: false)))
+    let cards = entries.compactMap { entry -> Card? in if case .card(let card) = entry { return card }; return nil }
+    check("menuGroupPinned", cards.count == 1 && cards[0].pinned && cards[0].charts.map(\.pinned) == [true, false])
 
     let copilot = Report(meters: [
         MeterReport(id: "chat", label: "Chat", windows: [WindowReport(id: "current", usedPercent: 0)]),
@@ -244,7 +266,7 @@ func pinChecks() {
                                  result: .success(copilot), configId: "copilot")
     let flat = MenuModel.entries(runs: [copilotRun], pinned: nil, configErrors: [], updated: nil, launchAtLogin: false,
                                  version: "1", formatReset: utc.string(from:))
-    check("menuFlatMeterPinnable", flat.contains(.meter(pin: "copilot:a|premium", title: i + "\u{2606} Premium: 79%", tone: .orange, pinned: false)))
+    check("menuFlatMeterPinnable", flat.contains { if case .card(let c) = $0 { return c.charts[0].rows.map(\.pin) == ["copilot:a|premium", "copilot:a|chat"] }; return false })
 }
 
 func toggleChecks() {
@@ -262,7 +284,7 @@ func toggleChecks() {
     check("menuProvidersSubmenu", entries.contains(.providers(toggles)))
     check("menuProvidersBeforeLaunchAtLogin",
           entries.firstIndex(of: .providers(toggles))! < entries.firstIndex(of: .launchAtLogin(false))!)
-    check("menuDisabledProviderHidden", !entries.contains { if case .provider(let id, _, _) = $0 { return id.hasPrefix("copilot") }; return false })
+    check("menuDisabledProviderHidden", !entries.contains { if case .card(let card) = $0 { return card.id.hasPrefix("copilot") }; return false })
     let none = MenuModel.entries(runs: [], pinned: nil, configErrors: [], providers: toggles.map { ProviderToggle(id: $0.id, name: $0.name, enabled: false) },
                                  updated: nil, launchAtLogin: false, version: "1", formatReset: { _ in "" })
     check("menuAllDisabledHint", none.contains(.detail("All providers are off", .secondary)))
@@ -287,7 +309,115 @@ func toggleChecks() {
     check("headlineFallsBackToMax", Report(meters: [MeterReport(id: "x", label: "X", windows: [
         WindowReport(id: "a", usedPercent: 12), WindowReport(id: "b", usedPercent: 30)])]).headlinePercent == 30)
     let tierRun = ProviderRun(id: "claude", name: "Claude", iconLabel: "CLD", iconColor: .gray, result: .success(tiers))
-    let tierIcon = StatusIcons.icons(runs: [tierRun], pinned: "claude")
-    check("pinnedProviderShowsHeadline", tierIcon.map(\.bottom) == ["10%"] && tierIcon[0].bottomColor == StatusIcons.orange
-          && tierIcon[0].accessibility == "Claude 10%")
+    let tierIcon = StatusIcons.icon(runs: [tierRun], pinned: "claude")
+    check("pinnedProviderShowsHeadline", tierIcon.bottom == "10%" && tierIcon.bottomColor == StatusIcons.orange
+          && tierIcon.accessibility == "Claude 10%")
 }
+
+func cardChecks() {
+    let now = Date(timeIntervalSince1970: 1_000_000)
+    func relative(_ seconds: TimeInterval) -> String? { RelativeTime.text(until: now + seconds, now: now) }
+    check("relativeTime", [relative(45), relative(1), relative(120), relative(119), relative(3 * 3600), relative(4 * 86_400),
+                           relative(86_399), relative(0), relative(-5)]
+          == ["in 45 seconds", "in 1 second", "in 2 minutes", "in 1 minute", "in 3 hours", "in 4 days", "in 23 hours", nil, nil])
+
+    func win(_ id: String, _ label: String?, _ percent: Double?, seconds: Int? = nil, reset: TimeInterval? = nil) -> WindowReport {
+        WindowReport(id: id, label: label, usedPercent: percent, resetsAt: reset.map { now + $0 }, durationSeconds: seconds)
+    }
+    func make(_ id: String, _ name: String, _ report: Report) -> ProviderRun {
+        ProviderRun(id: id, name: name, iconLabel: "X", iconColor: .gray, result: .success(report))
+    }
+    func card(_ run: ProviderRun, pinned: String? = nil) -> Card {
+        CardModel.card(run, pinned: pinned, now: now, formatReset: { _ in "D" })
+    }
+
+    let claude = card(make("claude", "Claude Code", Report(plan: "max", meters: [
+        MeterReport(id: "plan", label: "Plan", windows: [win("seven_day", "Weekly", 80, seconds: 604_800),
+                                                        win("five_hour", "Session", 10, seconds: 18_000, reset: 120)])])), pinned: "claude")
+    check("cardClaudeShape", claude.title == "Claude Code (max)" && claude.charts.count == 1 && claude.charts[0].title == nil
+          && claude.charts[0].center == "10%" && claude.pin == "claude" && claude.pinned && claude.overflow.isEmpty)
+    check("cardClaudeRings", claude.charts[0].rings == [CardRing(fraction: 0.10, tone: .green), CardRing(fraction: 0.80, tone: .orange)]
+          && claude.charts[0].rows.map(\.ringIndex) == [0, 1] && claude.charts[0].rows.map(\.label) == ["Session", "Weekly"]
+          && claude.charts[0].rows.allSatisfy { $0.pin == nil })
+    let account = card(ProviderRun(id: "copilot:octocat", name: "GitHub Copilot \u{00B7} octocat", iconLabel: "GH1", iconColor: .gray,
+                                   result: .success(Report(plan: "pro", meters: [])), configId: "copilot",
+                                   providerName: "GitHub Copilot", account: "octocat"))
+    check("cardAccountUnderName", account.title == "GitHub Copilot (pro)" && account.subtitle == "octocat" && claude.subtitle == nil)
+    let brand = RGB(0xD9, 0x77, 0x57)
+    let branded = CardModel.card(ProviderRun(id: "claude", name: "Claude Code", iconLabel: "CLD", iconColor: brand, result: .success(Report(meters: []))),
+                                 pinned: nil, now: now, formatReset: { _ in "D" })
+    check("cardAccentIsBrandColor", branded.accent == brand && claude.accent == .gray)
+    check("cardResetLines", claude.charts[0].rows.map(\.reset) == ["D \u{00B7} in 2 minutes", nil])
+    let past = card(make("c", "C", Report(meters: [MeterReport(id: "m", label: "M", windows: [win("a", "Session", 5, seconds: 18_000, reset: -1)])])))
+    check("cardResetPast", past.charts[0].rows[0].reset == "resetting\u{2026}")
+
+    let agy = make("antigravity", "Antigravity", Report(meters: [
+        MeterReport(id: "Gemini Models", label: "Gemini Models", windows: [win("w", "Weekly", 7), win("f", "Five Hour", 3, seconds: 18_000)]),
+        MeterReport(id: "Claude and GPT models", label: "Claude and GPT models", windows: [win("w", "Weekly", 95)]),
+    ]))
+    let gemini = Pin.key(run: "antigravity", meter: "Gemini Models")
+    let agyCard = card(agy, pinned: gemini)
+    check("cardGroupedCharts", agyCard.charts.map(\.title) == ["Gemini Models", "Claude and GPT models"]
+          && agyCard.charts[0].rings == [CardRing(fraction: 0.03, tone: .green), CardRing(fraction: 0.07, tone: .green)]
+          && agyCard.charts[0].center == "3%" && agyCard.charts[1].rings == [CardRing(fraction: 0.95, tone: .red)]
+          && agyCard.charts[1].center == "95%")
+    check("cardGroupedPins", agyCard.pin == gemini && agyCard.pinned && agyCard.charts[0].pin == gemini && agyCard.charts[0].pinned
+          && !agyCard.charts[1].pinned && !card(agy, pinned: "antigravity|Claude and GPT models").pinned
+          && CardModel.titlePin(agy) == gemini)
+
+    let copilot = make("copilot:a", "Copilot (a)", Report(meters: [
+        MeterReport(id: "chat", label: "Chat", windows: [win("current", nil, 0)]),
+        MeterReport(id: "premium_interactions", label: "Premium Interactions", windows: [win("current", nil, 79)]),
+        MeterReport(id: "completions", label: "Completions", windows: [win("current", nil, 5)]),
+    ]))
+    let copilotCard = card(copilot, pinned: "copilot:a|chat")
+    check("cardMergedChart", copilotCard.charts.count == 1 && copilotCard.charts[0].rows.map(\.label) == ["Premium Interactions", "Chat", "Completions"]
+          && copilotCard.charts[0].rows.map(\.pin) == ["copilot:a|premium_interactions", "copilot:a|chat", "copilot:a|completions"]
+          && copilotCard.charts[0].rows.map(\.pinned) == [false, true, false] && copilotCard.pin == "copilot:a" && !copilotCard.pinned
+          && copilotCard.charts[0].center == "79%" && copilotCard.charts[0].rows.allSatisfy { $0.reset == nil })
+
+    let five = card(make("m", "M", Report(meters: [MeterReport(id: "m", label: "M", windows: (1...5).map { win("w\($0)", "W\($0)", Double($0)) })])))
+    check("cardOverflowWindows", five.charts[0].rings.count == 4 && five.charts[0].rows.count == 5 && five.charts[0].rows[4].ringIndex == nil)
+    let groups = card(make("g", "G", Report(meters: (1...5).map { MeterReport(id: "g\($0)", label: "G\($0)", windows: [win("w", "Weekly", Double($0))]) })))
+    check("cardOverflowGroups", groups.charts.count == 4 && groups.overflow.count == 1 && groups.overflow[0].label == "G5"
+          && groups.overflow[0].percentText == "5%" && groups.overflow[0].ringIndex == nil)
+    let odd = card(make("o", "O", Report(meters: [MeterReport(id: "m", label: "M", windows: [win("a", "A", nil), win("b", "B", 150)])])))
+    check("cardRingClamp", odd.charts[0].rings == [CardRing(fraction: nil, tone: .secondary), CardRing(fraction: 1, tone: .red)]
+          && odd.charts[0].rows.map(\.percentText) == ["?", "150%"])
+
+    let failedCard = card(ProviderRun(id: "x", name: "X", iconLabel: "X", iconColor: .gray, result: .failure(ProviderFailure("boom"))))
+    check("cardFailure", failedCard.message == CardNotice(text: "Error: boom", tone: .red) && failedCard.charts.isEmpty && failedCard.title == "X")
+    let loadingCard = card(ProviderRun(id: "x", name: "X", iconLabel: "X", iconColor: .gray))
+    check("cardLoading", loadingCard.message == CardNotice(text: "Loading\u{2026}", tone: .secondary) && loadingCard.charts.isEmpty)
+    let flags = card(make("f", "F", Report(available: false, access: false, meters: [])))
+    check("cardNotices", flags.notices == [CardNotice(text: "Usage limit reached", tone: .red),
+                                           CardNotice(text: "Plan limits don't apply to this account", tone: .secondary),
+                                           CardNotice(text: "No usage data", tone: .secondary)])
+
+    // Hiding a card: only the panel changes; the provider keeps running and can still be pinned.
+    func runs(_ ids: [String]) -> [ProviderRun] {
+        ids.map { ProviderRun(id: $0, name: "N-\($0)", iconLabel: "X", iconColor: .gray, result: .success(Report(meters: [])), configId: String($0.prefix { $0 != ":" })) }
+    }
+    func entries(_ ids: [String], hidden: Set<String>, pinned: String? = nil) -> [MenuEntry] {
+        MenuModel.entries(runs: runs(ids), pinned: pinned, configErrors: [], updated: nil, launchAtLogin: false, version: "1",
+                          hidden: hidden, formatReset: { _ in "" })
+    }
+    func cardIds(_ list: [MenuEntry]) -> [String] { list.compactMap { if case .card(let card) = $0 { return card.id }; return nil } }
+    let all = entries(["claude", "copilot:a", "copilot:b"], hidden: [])
+    check("hideNothingByDefault", cardIds(all) == ["claude", "copilot:a", "copilot:b"] && !all.contains { if case .hiddenCards = $0 { return true }; return false })
+    let some = entries(["claude", "copilot:a", "copilot:b"], hidden: ["copilot:a"])
+    check("hideOneAccountCard", cardIds(some) == ["claude", "copilot:b"])
+    check("hiddenCardsListed", some.contains(.hiddenCards([HiddenCard(id: "copilot:a", name: "N-copilot:a")])))
+    check("hiddenStaleIdIgnored", !entries(["claude"], hidden: ["gone"]).contains { if case .hiddenCards = $0 { return true }; return false })
+    // Cards are outlined, so no separator between them; one after the last.
+    let kinds = all.prefix(4).map { entry -> String in
+        if case .card = entry { return "card" }
+        return entry == .separator ? "separator" : "other"
+    }
+    check("noSeparatorBetweenCards", kinds == ["card", "card", "card", "separator"])
+    let none = entries(["claude"], hidden: ["claude"])
+    check("allCardsHiddenHint", cardIds(none).isEmpty && none.contains(.detail("All cards are hidden", .secondary)))
+    check("hiddenCardStillDefaultPin", cardIds(some).first == "claude" && Pin.effective(nil, in: runs(["copilot:a"])) == "copilot:a")
+    check("hiddenCardKeepsPinState", entries(["claude", "copilot:a"], hidden: ["claude"], pinned: "claude").contains { if case .card(let c) = $0 { return c.id == "copilot:a" && !c.pinned }; return false })
+}
+

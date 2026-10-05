@@ -15,12 +15,13 @@ final class StatusController: NSObject, NSMenuDelegate {
         return formatter
     }()
 
-    private var icons: [IconSpec] = []
-    private var images: [NSImage] = []
-    private var cycleIndex = 0
-    private var cycleTimer: Timer?
+    private var icon: IconSpec?
+    private var cardWidth: CGFloat = 300
+    /// Where card content starts, measured from the open menu: item text starts at 14 pt, or 22 pt when an
+    /// item has a check mark (Launch at Login on) and macOS makes room for the check column. Cards follow.
+    private var cardLeading: CGFloat = 14
 
-    /// The provider shown in the menu bar; `nil` cycles through all of them.
+    /// Provider files that are switched off.
     private var disabled: Set<String> {
         get { Set(defaults.stringArray(forKey: "disabledProviders") ?? []) }
         set { defaults.set(newValue.sorted(), forKey: "disabledProviders") }
@@ -28,6 +29,12 @@ final class StatusController: NSObject, NSMenuDelegate {
 
     private var visibleRuns: [ProviderRun] {
         ProviderToggle.visible(poller.runs, disabled: poller.disabled)
+    }
+
+    /// Run ids of cards hidden from the panel; those providers keep running.
+    private var hiddenCards: Set<String> {
+        get { Set(defaults.stringArray(forKey: "hiddenCards") ?? []) }
+        set { defaults.set(newValue.sorted(), forKey: "hiddenCards") }
     }
 
     private var pinned: String? {
@@ -75,34 +82,14 @@ final class StatusController: NSObject, NSMenuDelegate {
     // MARK: Menu bar icon
 
     private func updateIcons() {
-        let newIcons = StatusIcons.icons(runs: visibleRuns, pinned: pinned)
-        if newIcons != icons {
-            icons = newIcons
-            images = newIcons.map(Self.image)
-            cycleIndex = 0
-        }
-        showIcon()
-        if icons.count > 1, cycleTimer == nil {
-            let timer = Timer(timeInterval: 5, repeats: true) { [weak self] _ in
-                guard let self else { return }
-                cycleIndex = (cycleIndex + 1) % icons.count
-                showIcon()
-            }
-            timer.tolerance = 0.5
-            RunLoop.main.add(timer, forMode: .common)
-            cycleTimer = timer
-        } else if icons.count <= 1 {
-            cycleTimer?.invalidate()
-            cycleTimer = nil
-        }
-    }
-
-    private func showIcon() {
-        guard let button = statusItem.button, !icons.isEmpty else { return }
-        let index = cycleIndex % icons.count
-        button.image = images[index]
-        button.toolTip = icons[index].accessibility
-        button.setAccessibilityLabel(icons[index].accessibility)
+        let effective = Pin.effective(pinned, in: visibleRuns)
+        if let effective, effective != pinned { pinned = effective }
+        let spec = StatusIcons.icon(runs: visibleRuns, pinned: effective)
+        guard spec != icon, let button = statusItem.button else { return }
+        icon = spec
+        button.image = Self.image(spec)
+        button.toolTip = spec.accessibility
+        button.setAccessibilityLabel(spec.accessibility)
     }
 
     /// Draws the pixel icon at 2 points per font pixel, so it stays sharp on any display.
@@ -137,7 +124,10 @@ final class StatusController: NSObject, NSMenuDelegate {
             },
             updated: poller.lastUpdate.map { "Updated \(timeFormatter.string(from: $0))" },
             launchAtLogin: SMAppService.mainApp.status == .enabled,
-            version: AppVersion.current, formatReset: resetFormatter.string(from:))
+            version: AppVersion.current, hidden: hiddenCards, formatReset: resetFormatter.string(from:))
+        cardLeading = SMAppService.mainApp.status == .enabled ? 22 : 14
+        cardWidth = CardView.width(for: entries.compactMap { if case .card(let card) = $0 { return card }; return nil },
+                                   leading: cardLeading)
         menu.removeAllItems()
         entries.forEach { menu.addItem(item(for: $0)) }
     }
@@ -146,17 +136,14 @@ final class StatusController: NSObject, NSMenuDelegate {
         switch entry {
         case .separator:
             return .separator()
-        case .provider(let id, let title, _):
-            let item = action(title, #selector(pin(_:)))
-            item.representedObject = id
-            return item
-        case .meter(let pin, let title, let tone, _):
-            let item = action(title, #selector(pin(_:)))
-            item.representedObject = pin
-            if let color = Self.color(tone) {
-                item.attributedTitle = NSAttributedString(
-                    string: title, attributes: [.foregroundColor: color, .font: NSFont.menuFont(ofSize: 0)])
-            }
+        case .card(let card):
+            let item = NSMenuItem()
+            item.view = CardView(card: card, width: cardWidth, leading: cardLeading, onPin: { [weak self] key in
+                self?.pinned = key
+                self?.updateIcons()
+            }, onHide: { [weak self] id in
+                self?.hiddenCards.insert(id)
+            })
             return item
         case .detail(let text, let tone):
             let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
@@ -165,15 +152,31 @@ final class StatusController: NSObject, NSMenuDelegate {
                     string: text, attributes: [.foregroundColor: color, .font: NSFont.menuFont(ofSize: 0)])
             }
             return item
-        case .cycleAll(let checked):
-            let item = action("Cycle All Providers", #selector(cycleAll))
-            item.state = checked ? .on : .off
-            return item
         case .refresh:
             return action("Refresh Now", #selector(refresh), key: "r")
         case .updated(let text), .version(let text):
             let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
             item.isEnabled = false
+            return item
+        case .credit(let before, let after):
+            let item = NSMenuItem(title: "\(before) heart \(after)", action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            let heart = NSTextAttachment()
+            if let symbol = NSImage(systemSymbolName: "heart.fill", accessibilityDescription: "love") {
+                // The same gray as the text around it.
+                heart.image = NSImage(size: symbol.size, flipped: false) { rect in
+                    symbol.draw(in: rect)
+                    NSColor.disabledControlTextColor.set()
+                    rect.fill(using: .sourceAtop)
+                    return true
+                }
+            }
+            let text = NSMutableAttributedString(string: "\(before) ")
+            text.append(NSAttributedString(attachment: heart))
+            text.append(NSAttributedString(string: " \(after)"))
+            text.addAttributes([.font: NSFont.menuFont(ofSize: 0), .foregroundColor: NSColor.disabledControlTextColor],
+                               range: NSRange(location: 0, length: text.length))
+            item.attributedTitle = text
             return item
         case .providers(let toggles):
             let item = NSMenuItem(title: "Providers", action: nil, keyEquivalent: "")
@@ -182,6 +185,16 @@ final class StatusController: NSObject, NSMenuDelegate {
                 let entry = action(toggle.name, #selector(toggleProvider(_:)))
                 entry.representedObject = toggle.id
                 entry.state = toggle.enabled ? .on : .off
+                submenu.addItem(entry)
+            }
+            item.submenu = submenu
+            return item
+        case .hiddenCards(let cards):
+            let item = NSMenuItem(title: "Hidden Cards", action: nil, keyEquivalent: "")
+            let submenu = NSMenu()
+            for card in cards {
+                let entry = action("Show \(card.name)", #selector(showCard(_:)))
+                entry.representedObject = card.id
                 submenu.addItem(entry)
             }
             item.submenu = submenu
@@ -213,11 +226,6 @@ final class StatusController: NSObject, NSMenuDelegate {
         }
     }
 
-    @objc private func pin(_ sender: NSMenuItem) {
-        pinned = sender.representedObject as? String
-        updateIcons()
-    }
-
     @objc private func toggleProvider(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }
         var set = disabled
@@ -227,9 +235,9 @@ final class StatusController: NSObject, NSMenuDelegate {
         updateIcons()
     }
 
-    @objc private func cycleAll() {
-        pinned = nil
-        updateIcons()
+    @objc private func showCard(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        hiddenCards.remove(id)
     }
 
     @objc private func refresh() {

@@ -131,6 +131,7 @@ func accountChecks() {
     let runs = runner.runAll(accountsConfig(twoAccounts))
     check("accountsOneRunEach", runs.map(\.id) == ["multi:alice", "multi:bob"])
     check("accountsNames", runs.map(\.name) == ["Multi · alice", "Multi · bob"])
+    check("accountsSplitNameAndAccount", runs.map(\.providerName) == ["Multi", "Multi"] && runs.map(\.account) == ["alice", "bob"])
     check("accountsLabelsNumbered", runs.map(\.iconLabel) == ["GH1", "GH2"])
     check("accountsConfigId", runs.allSatisfy { $0.configId == "multi" })
     check("accountsResults", runs.map { $0.result.flatMap { try? $0.get().maxPercent } } == [10, 80])

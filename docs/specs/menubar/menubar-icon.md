@@ -30,14 +30,14 @@ Color follows the highest used percent across all windows of the provider, not t
 ## Special states
 
 - A provider that fails shows a red `ERR`.
-- A provider that has not finished its first run is left out of the cycle. If nothing is ready, the icon shows `AI` over `--` in gray.
 - A pinned provider with no usage data shows `--` in gray.
 - The accessibility text and tooltip name the provider, the limit when pinned, and the value, for example `Claude 10%` or `Antigravity Gemini Models 7%`.
 
-## Cycle and pin
+## Pin
 
-- Nothing pinned: the icon cycles through the providers that are on, one every 5 seconds.
-- Pinned to a provider: that provider's icon only.
-- Pinned to a limit: that limit's icon only.
-- A pin on a provider that no longer exists, or a limit that no longer exists, falls back: a missing limit shows the provider; a missing provider means cycling. A pin on `copilot` falls back to its first account.
+- There is no cycle mode. The icon always shows one pinned target, set from the [panel](menubar-panel.md).
+- Pinned to a provider: that provider's icon.
+- Pinned to a limit: that limit's icon.
+- No valid pin (first launch, upgrade, or the pinned provider or limit is gone or off): the first provider that is on is pinned and the pin is saved. Antigravity can pin only a group, so its default is its first group. A pin on `copilot` falls back to its first account. A pinned limit that disappears falls back to its provider, then to the default.
+- A pinned provider that has not finished its first run shows `--` in gray. If no provider is on, the icon shows `AI` over `--` in gray.
 - Pin is kept across launches (user default `pinnedProvider`). Format: run id (`codex`, `copilot:octocat`), or run id and limit id joined by `|` (`antigravity|Gemini Models`).

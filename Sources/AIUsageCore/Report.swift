@@ -20,16 +20,10 @@ public struct Report: Equatable {
     /// interactions that the report has (the highest percent within that kind), else `maxPercent`.
     public var headlinePercent: Double? {
         let windows = meters.flatMap(\.windows)
-        func top(_ matches: (WindowReport) -> Bool) -> Double? { windows.filter(matches).compactMap(\.usedPercent).max() }
-        func named(_ window: WindowReport, _ name: String, _ seconds: Int) -> Bool {
-            window.durationSeconds == seconds || window.label?.lowercased().contains(name) == true
-        }
+        func top(_ kind: WindowKind) -> Double? { windows.filter { $0.kind == kind }.compactMap(\.usedPercent).max() }
         let premium = meters.filter { ($0.id + $0.label).lowercased().contains("premium") }
             .flatMap(\.windows).compactMap(\.usedPercent).max()
-        return top { named($0, "session", 5 * 3600) || named($0, "five hour", 5 * 3600) }
-            ?? top { named($0, "weekly", 7 * 86_400) }
-            ?? premium
-            ?? maxPercent
+        return top(.session) ?? top(.weekly) ?? premium ?? maxPercent
     }
 }
 
@@ -47,6 +41,12 @@ public struct MeterReport: Equatable {
     }
 }
 
+/// Which limit a window is, for ordering and for the headline value.
+public enum WindowKind: Int, Comparable {
+    case session, weekly, other
+    public static func < (a: WindowKind, b: WindowKind) -> Bool { a.rawValue < b.rawValue }
+}
+
 public struct WindowReport: Equatable {
     public var id: String
     public var label: String?
@@ -58,6 +58,14 @@ public struct WindowReport: Equatable {
                 durationSeconds: Int? = nil) {
         (self.id, self.label, self.usedPercent, self.resetsAt, self.durationSeconds) =
             (id, label, usedPercent, resetsAt, durationSeconds)
+    }
+
+    /// Session: 5 hours, or labeled session or five hour. Weekly: 7 days, or labeled weekly.
+    public var kind: WindowKind {
+        let text = label?.lowercased() ?? ""
+        if durationSeconds == 5 * 3600 || text.contains("session") || text.contains("five hour") { return .session }
+        if durationSeconds == 7 * 86_400 || text.contains("weekly") { return .weekly }
+        return .other
     }
 }
 

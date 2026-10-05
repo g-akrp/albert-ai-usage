@@ -35,7 +35,8 @@ public struct ProviderRunner {
             let label = accounts.count > 1 && index < 9
                 ? String(config.iconLabel.prefix(2)) + String(index + 1) : config.iconLabel
             return ProviderRun(id: "\(config.id):\(account)", name: "\(config.name) · \(account)", iconLabel: label,
-                               iconColor: config.iconColor, result: result, configId: config.id)
+                               iconColor: config.iconColor, result: result, configId: config.id,
+                               providerName: config.name, account: account)
         }
     }
 

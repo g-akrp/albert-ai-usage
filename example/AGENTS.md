@@ -87,7 +87,7 @@ An `await` takes:
 
 `expect` on a command takes the same `match` (0 to 8 predicates), `error`, and `require`, without `capture`.
 
-A predicate is `{ "path": "/type", "equals": "control_response" }` (a string, number, boolean, or null; `2` equals `2.0` but not `"2"`) or `{ "path": "/result", "exists": true }`.
+A predicate is `{ "path": "/type", "equals": "control_response" }` (a string, number, boolean, or null; `2` equals `2.0` but not `"2"`) `{ "path": "/limit", "notEquals": 0 }` (true when the value is missing or differs, same comparison as `equals`), or `{ "path": "/result", "exists": true }`.
 
 ## Map
 

@@ -20,4 +20,4 @@
 ## Limits
 
 - Physical memory footprint about 11 MB, must stay under 30 MB.
-- Only timers: 30 s schedule timer and 5 s icon cycle. No other polling.
+- Only timer: the 30 s schedule timer. No other polling.

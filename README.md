@@ -3,8 +3,10 @@
 A small native macOS menu bar app that shows plan usage for AI coding agents: Claude Code, Codex, GitHub Copilot, and Antigravity. It replaces the Rust core and SwiftBar plugin that used to live in this repository (still in git history).
 
 - The menu bar icon is a two-row pixel label: the provider's short name in its brand color on top, its headline percent below (session limit, else weekly, else premium interactions, else the highest; the color follows the highest used percent) in green, orange (from 70%), or red (from 90%). A provider that fails shows a red `ERR`.
-- Nothing pinned: the icon cycles through every provider every 5 seconds. Click a provider in the menu to pin it; choose **Cycle All Providers** to unpin.
-- A provider with several limits (Antigravity's model groups such as Gemini Models, Copilot's Chat and Premium Interactions) lists each with a ☆. Click one to pin just that limit; the icon's top row then shows the first three letters of its name, for example `GEM`, in the provider's color.
+- The icon always shows one pinned provider or limit. The first provider is pinned until you pin another; hover a card and click **Pin** to move it. There is no cycle mode.
+- The menu shows one card per provider: concentric rings (session outermost, then weekly) on the left, each limit with its reset date and time left (`in 2 minutes`) on the right.
+- A provider with several limits (Antigravity's model groups such as Gemini Models, Copilot's Chat and Premium Interactions) has its own pin (Antigravity pins only a model group). Click one to pin just that limit; the icon's top row then shows the first three letters of its name, for example `GEM`, in the provider's color.
+- Hover a card and click **Hide** to hide it, for example one Copilot account. The provider keeps running; **Hidden Cards** in the menu shows it again.
 - **Providers** in the menu turns monitoring of each provider on or off. A provider that is off never runs and is hidden from the menu bar and the menu; turning it back on runs it right away. The choice is kept across launches.
 - GitHub Copilot shows every account `gh` is logged in to (`gh auth status`), without switching the active account. With more than one account the icon labels are `GH1`, `GH2`, … in the order `gh` lists them.
 - The menu lists every provider with its plan and each limit window, with reset times in your local time zone, and the reason when a provider fails.
@@ -35,7 +37,7 @@ A provider is a JSON file, not code: which program to run and how to read its an
 - `iconLabel`: the icon's top row. Default: the first three letters of the id.
 - `iconColor`: `"RRGGBB"`. Default: gray.
 - `"as": "remainingPercent"` for `used`: 0 to 100 left.
-- `match` on a meter or window: the same predicates as `expect`; a value where one fails is skipped. Copilot uses it to skip quotas that do not apply: `has_quota` false (Copilot Free has no premium requests, reported as 0% remaining) or `unlimited` true.
+- `match` on a meter or window: the same predicates as `expect`; a value where one fails is skipped. Also `notEquals`. Copilot uses it to skip quotas that do not apply: `unlimited` true, or an `entitlement` of 0 (Copilot Free has no premium requests, reported as 0% remaining). A quota with `has_quota` false but an entitlement (a business seat that used all its premium requests) is shown as 100% used.
 - `accounts`: run the provider once per account. Its `source` lists the accounts, `each` points to the list, `id` to each account's name, and an optional `match` filters them. `${account}` in the provider's `args` and `env` is replaced by the name. Copilot lists `gh auth status --json hosts` and runs `gh api` with `GH_TOKEN` set from `gh auth token --user <account>` inside that child process only; the token is never stored.
 
 The app ships `Resources/providers/*.json`. To add a provider or change a shipped one, choose **Open Providers Folder…** and put a `<id>.json` file in `~/.config/ai-usage/providers/`. A file there with the same id replaces the shipped one. Files are reread on **Refresh Now**; a file that does not load is listed in the menu with the reason.

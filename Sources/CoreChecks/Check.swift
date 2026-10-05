@@ -42,14 +42,18 @@ func liveRun() {
         for run in runs {
         for entry in MenuModel.entries(runs: [run], pinned: nil, configErrors: [], updated: nil, launchAtLogin: false,
                                        version: "", formatReset: formatter.string(from:)) {
-            switch entry {
-            case .provider(_, let title, _): print(title)
-            case .meter(_, let title, let tone, _): print("\(title)  [\(tone), pinnable]")
-            case .detail(let text, let tone): print("\(text)  [\(tone)]")
-            default: break
+            if case .card(let card) = entry {
+                print("\(card.title)  \(card.message.map { $0.text } ?? "")")
+                card.notices.forEach { print("  \($0.text)") }
+                for chart in card.charts {
+                    print("  [\(chart.title ?? "-")] center \(chart.center), rings \(chart.rings.count)")
+                    chart.rows.forEach { print("    \($0.label): \($0.percentText) \($0.reset ?? "")") }
+                }
+                card.overflow.forEach { print("  + \($0.label): \($0.percentText)") }
             }
         }
-        print("icon:", StatusIcons.icons(runs: [run], pinned: nil).map { "\($0.top)/\($0.bottom)" })
+        let icon = StatusIcons.icon(runs: [run], pinned: nil)
+        print("icon: \(icon.top)/\(icon.bottom)")
         }
     }
 }
