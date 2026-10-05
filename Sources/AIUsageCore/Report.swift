@@ -15,6 +15,22 @@ public struct Report: Equatable {
     public var maxPercent: Double? {
         meters.flatMap(\.windows).compactMap(\.usedPercent).max()
     }
+
+    /// The number the menu bar shows for the provider: the first of session, weekly, premium
+    /// interactions that the report has (the highest percent within that kind), else `maxPercent`.
+    public var headlinePercent: Double? {
+        let windows = meters.flatMap(\.windows)
+        func top(_ matches: (WindowReport) -> Bool) -> Double? { windows.filter(matches).compactMap(\.usedPercent).max() }
+        func named(_ window: WindowReport, _ name: String, _ seconds: Int) -> Bool {
+            window.durationSeconds == seconds || window.label?.lowercased().contains(name) == true
+        }
+        let premium = meters.filter { ($0.id + $0.label).lowercased().contains("premium") }
+            .flatMap(\.windows).compactMap(\.usedPercent).max()
+        return top { named($0, "session", 5 * 3600) || named($0, "five hour", 5 * 3600) }
+            ?? top { named($0, "weekly", 7 * 86_400) }
+            ?? premium
+            ?? maxPercent
+    }
 }
 
 public struct MeterReport: Equatable {

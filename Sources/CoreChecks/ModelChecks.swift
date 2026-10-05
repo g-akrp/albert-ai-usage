@@ -221,7 +221,7 @@ func pinChecks() {
     check("meterLabel", [StatusIcons.label(for: "Claude and GPT models"), StatusIcons.label(for: "5-hour"), StatusIcons.label(for: "··")]
         == ["CLA", "5HO", "?"])
     check("missingMeterFallsBackToProvider",
-          StatusIcons.icons(runs: [run], pinned: Pin.key(run: "antigravity", meter: "gone")).map(\.bottom) == ["95%"])
+          StatusIcons.icons(runs: [run], pinned: Pin.key(run: "antigravity", meter: "gone")).map(\.bottom) == ["3%"])
     check("pinAccountFallback", Pin.resolve("copilot", in: [
         ProviderRun(id: "copilot:a", name: "A", iconLabel: "GH1", iconColor: .gray, configId: "copilot")])?.run.id == "copilot:a")
     check("pinUnknown", Pin.resolve("nope", in: [run]) == nil && Pin.resolve(nil, in: [run]) == nil)
@@ -266,4 +266,28 @@ func toggleChecks() {
     let none = MenuModel.entries(runs: [], pinned: nil, configErrors: [], providers: toggles.map { ProviderToggle(id: $0.id, name: $0.name, enabled: false) },
                                  updated: nil, launchAtLogin: false, version: "1", formatReset: { _ in "" })
     check("menuAllDisabledHint", none.contains(.detail("All providers are off", .secondary)))
+
+    let tiers = Report(meters: [
+        MeterReport(id: "plan", label: "Plan", windows: [
+            WindowReport(id: "weekly", label: "Weekly", usedPercent: 80, durationSeconds: 7 * 86_400),
+            WindowReport(id: "session", label: "Session", usedPercent: 10, durationSeconds: 5 * 3600)]),
+    ])
+    check("headlineSessionFirst", tiers.headlinePercent == 10 && tiers.maxPercent == 80)
+    let weeklyOnly = Report(meters: [
+        MeterReport(id: "chat", label: "Chat", windows: [WindowReport(id: "current", usedPercent: 90)]),
+        MeterReport(id: "plan", label: "Plan", windows: [WindowReport(id: "w", label: "Weekly", usedPercent: 40)]),
+        MeterReport(id: "premium_interactions", label: "Premium Interactions", windows: [WindowReport(id: "current", usedPercent: 5)]),
+    ])
+    check("headlineWeeklyBeforePremium", weeklyOnly.headlinePercent == 40)
+    let premium = Report(meters: [
+        MeterReport(id: "chat", label: "Chat", windows: [WindowReport(id: "current", usedPercent: 90)]),
+        MeterReport(id: "premium_interactions", label: "Premium Interactions", windows: [WindowReport(id: "current", usedPercent: 5)]),
+    ])
+    check("headlinePremiumBeforeChat", premium.headlinePercent == 5)
+    check("headlineFallsBackToMax", Report(meters: [MeterReport(id: "x", label: "X", windows: [
+        WindowReport(id: "a", usedPercent: 12), WindowReport(id: "b", usedPercent: 30)])]).headlinePercent == 30)
+    let tierRun = ProviderRun(id: "claude", name: "Claude", iconLabel: "CLD", iconColor: .gray, result: .success(tiers))
+    let tierIcon = StatusIcons.icons(runs: [tierRun], pinned: "claude")
+    check("pinnedProviderShowsHeadline", tierIcon.map(\.bottom) == ["10%"] && tierIcon[0].bottomColor == StatusIcons.orange
+          && tierIcon[0].accessibility == "Claude 10%")
 }

@@ -2,7 +2,7 @@
 
 A small native macOS menu bar app that shows plan usage for AI coding agents: Claude Code, Codex, GitHub Copilot, and Antigravity. It replaces the Rust core and SwiftBar plugin that used to live in this repository (still in git history).
 
-- The menu bar icon is a two-row pixel label: the provider's short name in its brand color on top, its highest used percent below in green, orange (from 70%), or red (from 90%). A provider that fails shows a red `ERR`.
+- The menu bar icon is a two-row pixel label: the provider's short name in its brand color on top, its headline percent below (session limit, else weekly, else premium interactions, else the highest; the color follows the highest used percent) in green, orange (from 70%), or red (from 90%). A provider that fails shows a red `ERR`.
 - Nothing pinned: the icon cycles through every provider every 5 seconds. Click a provider in the menu to pin it; choose **Cycle All Providers** to unpin.
 - A provider with several limits (Antigravity's model groups such as Gemini Models, Copilot's Chat and Premium Interactions) lists each with a ☆. Click one to pin just that limit; the icon's top row then shows the first three letters of its name, for example `GEM`, in the provider's color.
 - **Providers** in the menu turns monitoring of each provider on or off. A provider that is off never runs and is hidden from the menu bar and the menu; turning it back on runs it right away. The choice is kept across launches.

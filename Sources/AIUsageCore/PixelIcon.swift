@@ -134,10 +134,10 @@ public enum StatusIcons {
     static func icon(for run: ProviderRun) -> IconSpec? {
         switch run.result {
         case .success(let report)?:
-            guard let percent = report.maxPercent else { return nil }
-            let text = percentText(percent)
+            guard let shown = report.headlinePercent, let worst = report.maxPercent else { return nil }
+            let text = percentText(shown)
             return IconSpec(top: run.iconLabel, bottom: text, topColor: run.iconColor,
-                            bottomColor: severity(percent), accessibility: "\(run.name) \(text)")
+                            bottomColor: severity(worst), accessibility: "\(run.name) \(text)")
         case .failure(let failure)?:
             return IconSpec(top: run.iconLabel, bottom: "ERR", topColor: run.iconColor, bottomColor: red,
                             accessibility: "\(run.name) error: \(failure.message)")
