@@ -43,6 +43,12 @@ final class StatusController: NSObject, NSMenuDelegate {
         set { defaults.set(newValue, forKey: "cardOrder") }
     }
 
+    /// Run ids of cards shown as one line; they keep their charts for when they are expanded again.
+    private var collapsedCards: Set<String> {
+        get { Set(defaults.stringArray(forKey: "collapsedCards") ?? []) }
+        set { defaults.set(newValue.sorted(), forKey: "collapsedCards") }
+    }
+
     private var pinned: String? {
         get { defaults.string(forKey: "pinnedProvider") }
         set { defaults.set(newValue, forKey: "pinnedProvider") }
@@ -150,7 +156,8 @@ final class StatusController: NSObject, NSMenuDelegate {
             return .separator()
         case .card(let card):
             let item = NSMenuItem()
-            item.view = CardView(card: card, width: cardWidth, leading: cardLeading, canMoveUp: position.index > 0,
+            item.view = CardView(card: card, width: cardWidth, leading: cardLeading,
+                                 collapsed: collapsedCards.contains(card.id), canMoveUp: position.index > 0,
                                  canMoveDown: position.index < position.count - 1, onPin: { [weak self] key in
                 self?.pinned = key
                 self?.updateIcons()
@@ -158,6 +165,10 @@ final class StatusController: NSObject, NSMenuDelegate {
                 self?.hiddenCards.insert(id)
             }, onMove: { [weak self] id, step in
                 self?.moveCard(id, by: step)
+            }, onToggle: { [weak self] id in
+                guard var set = self?.collapsedCards else { return }
+                if set.contains(id) { set.remove(id) } else { set.insert(id) }
+                self?.collapsedCards = set
             })
             return item
         case .detail(let text, let tone):

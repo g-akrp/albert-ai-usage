@@ -56,6 +56,38 @@ public struct Card: Equatable {
     public let overflow: [CardRow]
 }
 
+/// One value on a collapsed card: a percent in its tone.
+public struct CardPill: Equatable {
+    public let text: String
+    public let tone: Tone
+
+    public init(text: String, tone: Tone) { (self.text, self.tone) = (text, tone) }
+}
+
+extension Card {
+    static let maxPills = 4
+
+    /// What a collapsed card shows in place of its charts: the percent of each ring row, or, for a provider
+    /// with several groups, each group's headline percent in the worst tone of its rings.
+    public var pills: [CardPill] {
+        if charts.count == 1 {
+            return charts[0].rows.prefix(Card.maxPills).map { CardPill(text: $0.percentText, tone: $0.tone) }
+        }
+        return charts.prefix(Card.maxPills).map { chart in
+            CardPill(text: chart.center, tone: chart.rings.map(\.tone).max { Card.severity($0) < Card.severity($1) } ?? .secondary)
+        }
+    }
+
+    private static func severity(_ tone: Tone) -> Int {
+        switch tone {
+        case .red: return 3
+        case .orange: return 2
+        case .green: return 1
+        case .normal, .secondary: return 0
+        }
+    }
+}
+
 public enum CardModel {
     static let maxRings = 4, maxCharts = 4
 

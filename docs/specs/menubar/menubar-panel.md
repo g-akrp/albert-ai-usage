@@ -64,6 +64,13 @@ One chart per model group, stacked, each with its own group header and rings for
 └──────────────────────────────────────────────────┘
 ```
 
+## Collapse a card
+
+- A chevron sits left of every card's title, always visible: down when expanded, right when collapsed. Clicking it toggles the card and closes the menu, like the other buttons. Clicking the title still pins.
+- A collapsed card is one line: the chevron, the title, and one tinted pill per value at the right, in the same style as the rows. A provider with one chart shows a pill per ring row (at most 4); a provider with groups (Antigravity) shows each group's headline percent, in the worst tone of that group's rings. While the pointer is over the card, the buttons replace the pills; the pinned card's `Pinned` button always shows, with the pills left of it.
+- The account line (GitHub Copilot), `Loading…`, errors and notices such as `Usage limit reached` still show, so a collapsed card never hides a problem. Charts and rows are not drawn, and the card's vertical padding shrinks from 16 to 10 pt.
+- The state is saved by run id (user default `collapsedCards`) and kept across launches. It only changes the panel; the icon, pin and refresh are unaffected.
+
 ## Card order
 
 - Default order: Claude Code, Codex, Antigravity, GitHub Copilot (by provider file id `claude`, `codex`, `antigravity`, `copilot`); any other provider follows, in id order. Copilot accounts keep the order `gh` lists them. The Providers submenu and the icon's default pin follow the same order.

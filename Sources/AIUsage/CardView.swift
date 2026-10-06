@@ -4,7 +4,8 @@ import AppKit
 /// One provider card in the menu: pin and title on top, then per chart a concentric ring chart on
 /// the left and one row per ring on the right. Clicking a pin calls `onPin` with its `Pin` key; the
 /// Hide button that shows while the pointer is over the card calls `onHide` with the card's id, and its
-/// up and down buttons call `onMove` with the card's id and -1 or 1.
+/// up and down buttons call `onMove` with the card's id and -1 or 1. The chevron left of the title calls
+/// `onToggle` with the card's id; a collapsed card shows its title and one pill per value, no charts.
 final class CardView: NSView {
     private static let minWidth: CGFloat = 300, chartSize: CGFloat = 76
     private static let thickness: CGFloat = 5, gap: CGFloat = 2, pinSize: CGFloat = 13, box: CGFloat = 19
@@ -13,13 +14,14 @@ final class CardView: NSView {
     // bottom (so cards sit 2 x `outerGap` apart); content is `edge` inside the outline vertically and
     // `leading + innerPad` from the view edge on both sides (`leading` is where menu text starts).
     private static let outerGap: CGFloat = 4, sideGap: CGFloat = 10, edge: CGFloat = 16, innerPad: CGFloat = 12, small: CGFloat = 4, medium: CGFloat = 8, large: CGFloat = 14
+    private static let collapsedEdge: CGFloat = 10
     private static let line: CGFloat = 20, resetLine: CGFloat = 14, dotColumn: CGFloat = 14
     /// The tinted background behind a usage value.
     private static let pillHeight: CGFloat = 18, pillPadding: CGFloat = 7
 
     /// `rect` is where a click counts; `box` is the outlined button drawn around the pin icon.
     private struct PinTarget {
-        enum Kind { case pin(pinned: Bool), hide, move(step: Int) }
+        enum Kind { case pin(pinned: Bool), hide, move(step: Int), toggle }
         let rect: NSRect, box: NSRect, key: String, label: String, kind: Kind
     }
 
@@ -34,6 +36,8 @@ final class CardView: NSView {
     private static let pinWidth = ceil(NSAttributedString(string: "Pinned", attributes: [.font: pinFont]).size().width) + 16
     /// The two arrow buttons that reorder a card sit left of Hide, each `box` wide, 4 pt apart.
     private static let moveSpace = 2 * (box + 4)
+    /// The collapse chevron's column, left of the title.
+    private static let chevronSpace: CGFloat = 14
 
     private let card: Card
     private let width: CGFloat
@@ -41,6 +45,8 @@ final class CardView: NSView {
     private let onPin: (String) -> Void
     private let onHide: (String) -> Void
     private let onMove: (String, Int) -> Void
+    private let onToggle: (String) -> Void
+    private let collapsed: Bool
     private let canMoveUp: Bool, canMoveDown: Bool
     private var cardHovered = false
     private var targets: [PinTarget] = []
@@ -61,7 +67,7 @@ final class CardView: NSView {
         let columnX = leading + chartSize + large, indent = leading, pinSpace = pinWidth + 6
         var widest = minWidth
         for card in cards {
-            widest = max(widest, indent + size(card.title, boldTitleFont) + large + pinSpace + hideWidth + moveSpace + leading)
+            widest = max(widest, indent + chevronSpace + size(card.title, boldTitleFont) + large + pinSpace + hideWidth + moveSpace + leading)
             if let account = card.subtitle { widest = max(widest, indent + size(account, bodyFont) + leading) }
             for notice in [card.message].compactMap({ $0 }) + card.notices {
                 widest = max(widest, indent + size(notice.text, bodyFont) + leading)
@@ -83,9 +89,12 @@ final class CardView: NSView {
         return ceil(widest)
     }
 
-    init(card: Card, width: CGFloat, leading: CGFloat, canMoveUp: Bool, canMoveDown: Bool,
-         onPin: @escaping (String) -> Void, onHide: @escaping (String) -> Void, onMove: @escaping (String, Int) -> Void) {
+    init(card: Card, width: CGFloat, leading: CGFloat, collapsed: Bool, canMoveUp: Bool, canMoveDown: Bool,
+         onPin: @escaping (String) -> Void, onHide: @escaping (String) -> Void, onMove: @escaping (String, Int) -> Void,
+         onToggle: @escaping (String) -> Void) {
         self.card = card
+        self.collapsed = collapsed
+        self.onToggle = onToggle
         self.canMoveUp = canMoveUp
         self.canMoveDown = canMoveDown
         self.onMove = onMove
@@ -165,6 +174,7 @@ final class CardView: NSView {
         case .pin: onPin(targets[index].key)
         case .hide: onHide(targets[index].key)
         case .move(let step): onMove(targets[index].key, step)
+        case .toggle: onToggle(targets[index].key)
         }
     }
 
@@ -173,12 +183,14 @@ final class CardView: NSView {
     /// Lays the card out top to bottom; draws it when `draw` is set. Returns the height.
     private func render(draw: Bool) -> CGFloat {
         targets = []
-        var y = Self.outerGap + Self.edge
+        let edge = collapsed ? Self.collapsedEdge : Self.edge
+        var y = Self.outerGap + edge
         let x = leading, right = width - leading, indent = x
-        let titleLine = Self.box + 3
+        let titleLine = Self.box + 3, titleX = indent + Self.chevronSpace
 
+        chevron(at: NSPoint(x: indent, y: y), height: titleLine, draw: draw)
         text(card.title, font: card.pinned ? Self.boldTitleFont : Self.titleFont, color: .labelColor,
-             at: NSPoint(x: indent, y: y), height: titleLine, draw: draw)
+             at: NSPoint(x: titleX, y: y), height: titleLine, draw: draw)
         // Hide and the arrows are recorded first so they win where their boxes overlap the pin's wide hover area.
         let hideX = right - Self.pinWidth - 6 - Self.hideWidth, buttonY = y + (titleLine - Self.box) / 2
         hideButton(at: NSPoint(x: hideX, y: buttonY), draw: draw)
@@ -187,9 +199,10 @@ final class CardView: NSView {
         pin(card.pinned, key: card.pin, label: name,
             at: NSPoint(x: right - Self.pinWidth, y: y + (titleLine - Self.box) / 2),
             hit: NSRect(x: x, y: y, width: right - x, height: titleLine), draw: draw)
+        if collapsed, draw, !cardHovered { pills(right: right - (card.pinned ? Self.pinWidth + 6 : 0), y: y, height: titleLine) }
         y += titleLine
         if let account = card.subtitle {
-            text(account, font: Self.bodyFont, color: .secondaryLabelColor, at: NSPoint(x: indent, y: y), height: Self.line - 4, draw: draw)
+            text(account, font: Self.bodyFont, color: .secondaryLabelColor, at: NSPoint(x: titleX, y: y), height: Self.line - 4, draw: draw)
             y += Self.line - 4
         }
 
@@ -200,7 +213,7 @@ final class CardView: NSView {
             y += 18
         }
 
-        for (index, chart) in card.charts.enumerated() {
+        for (index, chart) in (collapsed ? [] : card.charts).enumerated() {
             y += index == 0 ? Self.medium : Self.large
             let top = y
             drawChart(chart, in: NSRect(x: x, y: top, width: Self.chartSize, height: Self.chartSize), draw: draw)
@@ -223,7 +236,7 @@ final class CardView: NSView {
             }
             y = top + max(Self.chartSize, rowsHeight)
         }
-        for row in card.overflow {
+        for row in collapsed ? [] : card.overflow {
             y += Self.small
             text("\(row.label)  \(row.percentText)", font: Self.bodyFont, color: Self.valueColor(row.tone),
                  at: NSPoint(x: indent, y: y), height: Self.line, draw: draw)
@@ -233,7 +246,41 @@ final class CardView: NSView {
             }
             y += Self.line
         }
-        return y + Self.edge + Self.outerGap
+        return y + edge + Self.outerGap
+    }
+
+    /// The disclosure chevron left of the title: right-pointing when collapsed, down when expanded. Always drawn.
+    private func chevron(at origin: NSPoint, height: CGFloat, draw: Bool) {
+        let hit = NSRect(x: origin.x - 6, y: origin.y, width: Self.chevronSpace + 8, height: height)
+        let index = targets.count
+        targets.append(PinTarget(rect: hit, box: hit, key: card.id, label: name, kind: .toggle))
+        guard draw else { return }
+        let center = NSPoint(x: origin.x + 4, y: origin.y + height / 2)
+        let path = NSBezierPath()
+        let points = collapsed ? [(-2, -4), (2, 0), (-2, 4)] : [(-4, -2), (0, 2), (4, -2)]
+        for (step, point) in points.enumerated() {
+            let p = NSPoint(x: center.x + CGFloat(point.0), y: center.y + CGFloat(point.1))
+            step == 0 ? path.move(to: p) : path.line(to: p)
+        }
+        path.lineWidth = 1.5
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+        (hovered == index || pressed == index ? NSColor.labelColor : NSColor.secondaryLabelColor).setStroke()
+        path.stroke()
+    }
+
+    /// A collapsed card's values, right-aligned to `right`, in the same tinted pills as the rows.
+    private func pills(right: CGFloat, y: CGFloat, height: CGFloat) {
+        var x = right
+        for pill in card.pills.reversed() {
+            let value = NSAttributedString(string: pill.text, attributes: [.font: Self.bodyFont, .foregroundColor: Self.valueColor(pill.tone)])
+            let box = NSRect(x: x - value.size().width - 2 * Self.pillPadding, y: y + (height - Self.pillHeight) / 2,
+                             width: value.size().width + 2 * Self.pillPadding, height: Self.pillHeight)
+            Self.color(pill.tone).withAlphaComponent(0.16).setFill()
+            NSBezierPath(roundedRect: box, xRadius: Self.pillHeight / 2, yRadius: Self.pillHeight / 2).fill()
+            value.draw(at: NSPoint(x: box.minX + Self.pillPadding, y: box.midY - value.size().height / 2))
+            x = box.minX - 6
+        }
     }
 
     /// A row's height plus the gap below it.
@@ -402,6 +449,7 @@ final class CardView: NSView {
                 case .pin: self?.onPin(target.key)
                 case .hide: self?.onHide(target.key)
                 case .move(let step): self?.onMove(target.key, step)
+                case .toggle: self?.onToggle(target.key)
                 }
             })
             element.setAccessibilityRole(.button)
@@ -409,6 +457,7 @@ final class CardView: NSView {
             case .pin(let pinned): element.setAccessibilityLabel("\(pinned ? "Unpin" : "Pin") \(target.label)")
             case .hide: element.setAccessibilityLabel("Hide \(target.label)")
             case .move(let step): element.setAccessibilityLabel("Move \(target.label) \(step < 0 ? "up" : "down")")
+            case .toggle: element.setAccessibilityLabel("\(collapsed ? "Expand" : "Collapse") \(target.label)")
             }
             element.setAccessibilityParent(self)
             element.setAccessibilityFrameInParentSpace(target.rect)

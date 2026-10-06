@@ -389,6 +389,16 @@ func cardChecks() {
 
     let failedCard = card(ProviderRun(id: "x", name: "X", iconLabel: "X", iconColor: .gray, result: .failure(ProviderFailure("boom"))))
     check("cardFailure", failedCard.message == CardNotice(text: "Error: boom", tone: .red) && failedCard.charts.isEmpty && failedCard.title == "X")
+    // A collapsed card shows one pill per ring row, or one per group chart (its headline, in the worst tone).
+    check("pillsOneChart", claude.pills == [CardPill(text: "10%", tone: .green), CardPill(text: "80%", tone: .orange)]
+          && copilotCard.pills == [CardPill(text: "79%", tone: .orange), CardPill(text: "0%", tone: .green), CardPill(text: "5%", tone: .green)])
+    check("pillsGroups", agyCard.pills == [CardPill(text: "3%", tone: .green), CardPill(text: "95%", tone: .red)])
+    check("pillsCappedAtFour", five.pills.count == 4)
+    check("pillsNoneWithoutData", failedCard.pills.isEmpty && branded.pills.isEmpty)
+    check("pillsWorstToneOfGroup", card(make("w", "W", Report(meters: [
+        MeterReport(id: "a", label: "A", windows: [win("f", "Five Hour", 3, seconds: 18_000), win("w", "Weekly", 92)]),
+        MeterReport(id: "b", label: "B", windows: [win("w", "Weekly", 10)])]))).pills
+          == [CardPill(text: "3%", tone: .red), CardPill(text: "10%", tone: .green)])
     let loadingCard = card(ProviderRun(id: "x", name: "X", iconLabel: "X", iconColor: .gray))
     check("cardLoading", loadingCard.message == CardNotice(text: "Loading\u{2026}", tone: .secondary) && loadingCard.charts.isEmpty)
     let flags = card(make("f", "F", Report(available: false, access: false, meters: [])))
