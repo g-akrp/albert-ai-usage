@@ -15,6 +15,13 @@ scripts/release.sh 1.1.0 --publish  # also push main and the tag, and create the
 - Publishing needs the `gh` CLI logged in and an `origin` remote.
 - Commit, push, and publish happen only when the maintainer asks.
 
+## Homebrew
+
+Set `HOMEBREW_TAP_DIR` to a checkout of a tap repo (`homebrew-<name>`) and `release.sh` rewrites `Casks/ai-usage.rb` there with the new version and DMG checksum, and commits it. With `--publish` it pushes the tap after the GitHub release is created. Users: `brew install --cask <owner>/<name>/ai-usage`, then `brew upgrade --cask ai-usage`.
+
+- The cask downloads the DMG from the GitHub release URL, so the release must be publicly downloadable. With this repository private, `brew install` fails for anyone without a custom download strategy.
+- The cask clears the quarantine flag in `postflight` because the app is not notarized.
+
 ## Artifact
 
 - `AIUsage-<version>.dmg`: drag **AI Usage** onto **Applications**.

@@ -3,6 +3,9 @@
 # commits, and tags. With --publish, also pushes and creates the GitHub release.
 #
 # Usage: scripts/release.sh <version> [--publish]     e.g. scripts/release.sh 1.1.0
+#
+# If HOMEBREW_TAP_DIR points at a checkout of a Homebrew tap repo, Casks/ai-usage.rb there is rewritten
+# for this version and committed; with --publish it is pushed after the GitHub release exists.
 set -euo pipefail
 
 version="${1:-}"
@@ -60,6 +63,36 @@ hdiutil create -volname "AI Usage $version" -srcfolder "$staging" -fs HFS+ -form
 rm -rf "$staging"
 (cd build && shasum -a 256 "AIUsage-$version.dmg" > "AIUsage-$version.dmg.sha256")
 
+# Rewrites the Homebrew cask in the tap checkout for this version and commits it.
+update_cask() {
+    local sha cask
+    sha=$(cut -d' ' -f1 "build/AIUsage-$version.dmg.sha256")
+    mkdir -p "$HOMEBREW_TAP_DIR/Casks"
+    cask="$HOMEBREW_TAP_DIR/Casks/ai-usage.rb"
+    cat > "$cask" <<CASK
+cask "ai-usage" do
+  version "$version"
+  sha256 "$sha"
+
+  url "https://github.com/g-akrp/albert-ai-usage/releases/download/v#{version}/AIUsage-#{version}.dmg"
+  name "AI Usage"
+  desc "Menu bar usage meters for AI coding tools"
+  homepage "https://github.com/g-akrp/albert-ai-usage"
+
+  app "AI Usage.app"
+
+  # Ad-hoc signed, not notarized: clear the quarantine flag so Gatekeeper lets it open.
+  postflight do
+    system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{appdir}/AI Usage.app"]
+  end
+
+  zap trash: "~/Library/Preferences/local.ai-usage.plist"
+end
+CASK
+    git -C "$HOMEBREW_TAP_DIR" add Casks/ai-usage.rb
+    git -C "$HOMEBREW_TAP_DIR" commit -q -m "ai-usage $version"
+}
+
 git add "$plist" "$versionfile"
 git commit -q --allow-empty -m "release: $version"
 trap - ERR
@@ -72,6 +105,11 @@ if [[ "$publish" == "--publish" ]]; then
     git -c credential.helper= -c 'credential.helper=!gh auth git-credential' push origin main "v$version"
     gh release create "v$version" "$dmg" "build/AIUsage-$version.dmg.sha256" \
         --title "AI Usage $version" --generate-notes
+    if [[ -n "${HOMEBREW_TAP_DIR:-}" ]]; then
+        update_cask
+        git -C "$HOMEBREW_TAP_DIR" -c credential.helper= -c 'credential.helper=!gh auth git-credential' push
+    fi
 else
+    [[ -z "${HOMEBREW_TAP_DIR:-}" ]] || update_cask
     echo "Not published. To publish: git push origin main v$version && gh release create v$version $dmg"
 fi
