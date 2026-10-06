@@ -1,99 +1,106 @@
 # AI Usage
 
-A small native macOS menu bar app that shows plan usage for AI coding agents: Claude Code, Codex, GitHub Copilot, and Antigravity. It replaces the Rust core and SwiftBar plugin that used to live in this repository (still in git history).
+See how much of your AI coding plans you have left, right in the macOS menu bar.
 
-- The menu bar icon is a two-row pixel label: the provider's short name in its brand color on top, its headline percent below (session limit, else weekly, else premium interactions, else the highest; the color follows the highest used percent) in green, orange (from 70%), or red (from 90%). A provider that fails shows a red `ERR`.
-- The icon always shows one pinned provider or limit. The first provider is pinned until you pin another; hover a card and click **Pin** to move it. There is no cycle mode.
-- The menu shows one card per provider: concentric rings (session outermost, then weekly) on the left, each limit with its reset date and time left (`in 2 minutes`) on the right.
-- A provider with several limits (Antigravity's model groups such as Gemini Models, Copilot's Chat and Premium Interactions) has its own pin (Antigravity pins only a model group). Click one to pin just that limit; the icon's top row then shows the first three letters of its name, for example `GEM`, in the provider's color.
-- Hover a card and click **Hide** to hide it, for example one Copilot account. The provider keeps running; **Hidden Cards** in the menu shows it again.
-- **Providers** in the menu turns monitoring of each provider on or off. A provider that is off never runs and is hidden from the menu bar and the menu; turning it back on runs it right away. The choice is kept across launches.
-- GitHub Copilot shows every account `gh` is logged in to (`gh auth status`), without switching the active account. With more than one account the icon labels are `GH1`, `GH2`, … in the order `gh` lists them.
-- The menu lists every provider with its plan and each limit window, with reset times in your local time zone, and the reason when a provider fails.
-- Each provider refreshes on its own interval (5 minutes; Antigravity 10 minutes), at most two at a time. A failing provider retries after 1, 2, 4, … minutes, at most every 30. **Refresh Now** (⌘R) runs all of them.
-- No Dock icon. AppKit only, no third-party packages.
+AI Usage is a small native menu bar app for **Claude Code**, **Codex**, **GitHub Copilot**, and **Antigravity**. It runs each tool's own CLI to read your usage, so it never asks for, reads, or stores a token or password.
 
-Requires macOS 13 or later, and the provider CLIs you want to see: `claude`, `codex`, `gh` (logged in, with Copilot), `agy`.
+- **Glanceable icon.** Two pixel rows: the provider's short name on top, its headline percent below (session limit, else weekly, else premium interactions). Green, orange from 70%, red from 90%.
+- **One card per provider.** Concentric rings (session outermost, then weekly) and each limit with its reset time and time left, for example `in 3h 25m` or `in 4d 2h 12m`.
+- **Pin what matters.** Hover a card and click **Pin** to put that provider, or a single limit such as one Antigravity model group, on the icon.
+- **Multiple Copilot accounts.** Every account `gh` is logged in to is shown, without switching the active one.
+- **Hide or turn off.** Hide a card, or switch a provider off so it never runs.
+- **Light on resources.** About 11 MB of memory, no Dock icon, no third-party packages, AppKit only.
 
-## Install and update (release DMG)
+## Requirements
 
-1. Download `AIUsage-<version>.dmg` from the GitHub release (the repository is private, so you need access).
+- macOS 13 or later.
+- The CLIs for the providers you want, logged in: `claude`, `codex`, `gh` (with Copilot), `agy`. Providers whose CLI is missing show the reason in the menu.
+
+## Install
+
+### Homebrew
+
+```
+brew install --cask g-akrp/tap/ai-usage
+```
+
+Update with `brew upgrade --cask ai-usage`.
+
+### DMG
+
+1. Download `AIUsage-<version>.dmg` from the [latest release](https://github.com/g-akrp/albert-ai-usage/releases/latest).
 2. Open it and drag **AI Usage** onto **Applications**.
-3. First launch: macOS blocks the app because it is signed ad hoc, not with a paid Apple Developer ID. Open it once, then go to System Settings › Privacy & Security and choose **Open Anyway**.
-4. Optional: choose **Launch at Login** in the menu.
+3. First launch: the app is signed ad hoc, not with a paid Apple Developer ID, so macOS blocks it. Open it once, then go to System Settings › Privacy & Security and choose **Open Anyway**.
 
-To update: quit the app (menu › Quit), install the new DMG the same way (replace the old app), and open it. The installed version is shown at the bottom of the menu.
+To update, quit the app (menu › Quit), install the new DMG over the old app, and open it. The installed version is at the bottom of the menu. To check a download: `shasum -a 256 -c AIUsage-<version>.dmg.sha256`.
 
-To check a download: `shasum -a 256 -c AIUsage-<version>.dmg.sha256` in the download folder.
+### From source
 
-Versions before 1.3.0 were called Albert AI Usage (`AlbertAIUsage.app`). Quit it and delete it after installing AI Usage; your pin and provider switches carry over. Turn **Launch at Login** on again, because it belongs to the old app.
-
-If you used the SwiftBar plugin, remove its symlink `albert-usage.30s.sh` from SwiftBar's plugin folder. The app reads the plugin's old pin (`~/.config/albert-ai-usage/pinned`) once on first launch.
-
-## Providers
-
-A provider is a JSON file, not code: which program to run and how to read its answer. The format is the Maestri Agent Usage format, documented in [example/AGENTS.md](example/AGENTS.md), with these additions:
-
-- `iconLabel`: the icon's top row. Default: the first three letters of the id.
-- `iconColor`: `"RRGGBB"`. Default: gray.
-- `"as": "remainingPercent"` for `used`: 0 to 100 left.
-- `match` on a meter or window: the same predicates as `expect`; a value where one fails is skipped. Also `notEquals`. Copilot uses it to skip quotas that do not apply: `unlimited` true, or an `entitlement` of 0 (Copilot Free has no premium requests, reported as 0% remaining). A quota with `has_quota` false but an entitlement (a business seat that used all its premium requests) is shown as 100% used.
-- `accounts`: run the provider once per account. Its `source` lists the accounts, `each` points to the list, `id` to each account's name, and an optional `match` filters them. `${account}` in the provider's `args` and `env` is replaced by the name. Copilot lists `gh auth status --json hosts` and runs `gh api` with `GH_TOKEN` set from `gh auth token --user <account>` inside that child process only; the token is never stored.
-
-The app ships `Resources/providers/*.json`. To add a provider or change a shipped one, choose **Open Providers Folder…** and put a `<id>.json` file in `~/.config/ai-usage/providers/`. A file there with the same id replaces the shipped one. Files are reread on **Refresh Now**; a file that does not load is listed in the menu with the reason.
-
-How providers run:
-
-- Launched directly, without a shell, from an empty temporary folder, in their own process group. Stderr is discarded. On timeout the whole group is killed.
-- Minimal environment: `PATH`, `HOME`, `TERM=dumb`, `NO_COLOR=1`, `LANG`, and when set: `USER`, `LOGNAME`, `LC_ALL`, `TMPDIR`, `SHELL`, `SSH_AUTH_SOCK`, `__CF_USER_TEXT_ENCODING`, and the `HTTP(S)_PROXY`, `NO_PROXY`, `ALL_PROXY` variables (both cases). `GITHUB_TOKEN` and `GH_TOKEN` are never passed, because a stale one shadows a working `gh` login. Add anything else with `env` in the provider file.
-- `PATH` and the proxy variables come from your login shell (`$SHELL -l -i`, read once at launch), followed by `~/.local/bin`, `~/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, and the system folders. An app opened from Finder does not otherwise see your shell's PATH.
-- Output limits from the format are enforced (`maxOutputBytes`, `maxLineBytes`, `maxTotalBytes`).
-
-## Making a release
-
-```
-scripts/release.sh 1.1.0            # build locally: version, checks, DMG, commit, tag
-scripts/release.sh 1.1.0 --publish  # also push main and the tag, and create the GitHub release
-```
-
-The script runs only on a `main` without uncommitted changes to tracked files. It sets `CFBundleShortVersionString` (and increments `CFBundleVersion`) in `Resources/Info.plist` and `AppVersion.current`, runs `swift run CoreChecks`, builds the app, and writes `build/AIUsage-<version>.dmg` with a `.sha256` file. If anything fails before the release commit, the version edits are undone. Publishing needs the `gh` CLI logged in and an `origin` remote.
-
-## Build from source
+Only the Xcode Command Line Tools are needed.
 
 ```
 scripts/build-app.sh
 open ~/Applications/"AI Usage.app"
 ```
 
-The script builds the app, wraps it with the provider files in `AI Usage.app`, signs it ad hoc, and copies it to `~/Applications`. Only the Xcode Command Line Tools are needed.
+This builds the app, signs it ad hoc, and copies it to `~/Applications`.
 
-The app icon (`Resources/AppIcon.icns`) is drawn by `scripts/make-icon.swift` in the same pixel style. To change it, edit that script and run `swift scripts/make-icon.swift`.
+## Use
 
-## Checks
+- Click the icon for the cards. **Refresh Now** (⌘R) reruns every provider.
+- **Providers** turns each provider on or off. The choice is kept across launches.
+- **Hidden Cards** brings back a card you hid.
+- **Launch at Login** starts the app when you log in.
+- Each provider refreshes on its own interval (5 minutes; Antigravity 10 minutes). A failing provider retries after 1, 2, 4, … minutes, at most every 30.
+
+Upgrading from older versions:
+
+- Before 1.3.0 the app was called Albert AI Usage (`AlbertAIUsage.app`). Quit and delete it after installing AI Usage; your pin and provider switches carry over. Turn **Launch at Login** on again.
+- If you used the SwiftBar plugin, remove its `albert-usage.30s.sh` symlink from SwiftBar's plugin folder.
+
+## Privacy
+
+- Each provider runs as its own CLI, using that CLI's login. AI Usage never reads or stores credentials.
+- `GITHUB_TOKEN` and `GH_TOKEN` are never passed to providers, because a stale one shadows a working `gh` login. For Copilot accounts, a token from `gh auth token --user <account>` is set inside that one child process only.
+- Nothing is sent anywhere except by the provider CLIs themselves.
+
+## Add or change a provider
+
+A provider is a JSON file, not code: which program to run and how to read its answer. Choose **Open Providers Folder…** in the menu and put a `<id>.json` file in `~/.config/ai-usage/providers/`. A file there with the same id replaces the shipped one. Files are reread on **Refresh Now**, and a file that does not load is listed in the menu with the reason.
+
+The format is the Maestri Agent Usage format, documented in [example/AGENTS.md](example/AGENTS.md), with these additions:
+
+- `iconLabel`: the icon's top row. Default: the first three letters of the id.
+- `iconColor`: `"RRGGBB"`. Default: gray.
+- `"as": "remainingPercent"` for `used`: 0 to 100 left.
+- `match` on a meter or window: the same predicates as `expect`; a value where one fails is skipped. Also `notEquals`.
+- `accounts`: run the provider once per account. `source` lists the accounts, `each` points to the list, `id` to each account's name, and an optional `match` filters them. `${account}` in `args` and `env` is replaced by the name.
+
+How providers run:
+
+- Launched directly, without a shell, from an empty temporary folder, in their own process group. Stderr is discarded. On timeout the whole group is killed.
+- Minimal environment: `PATH`, `HOME`, `TERM=dumb`, `NO_COLOR=1`, `LANG`, and when set: `USER`, `LOGNAME`, `LC_ALL`, `TMPDIR`, `SHELL`, `SSH_AUTH_SOCK`, `__CF_USER_TEXT_ENCODING`, and the `HTTP(S)_PROXY`, `NO_PROXY`, `ALL_PROXY` variables. Add anything else with `env` in the provider file.
+- `PATH` and the proxy variables come from your login shell (`$SHELL -l -i`, read once at launch), then `~/.local/bin`, `~/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, and the system folders. An app opened from Finder does not otherwise see your shell's PATH.
+- Output limits from the format are enforced (`maxOutputBytes`, `maxLineBytes`, `maxTotalBytes`).
+
+Where each provider's numbers come from is in [docs/specs/data-source](docs/specs/data-source/data-source.md).
+
+## Contributing
 
 ```
 swift run CoreChecks          # offline checks; PASS/FAIL per check, non-zero exit on any failure
 swift run CoreChecks --live   # runs the shipped providers for real and prints what the menu would show
 ```
 
-The checks live in an executable target, not XCTest, because XCTest and Swift Testing do not build with the Command Line Tools alone.
-
-## Layout
+The checks are an executable target, not XCTest, because XCTest does not build with the Command Line Tools alone. Logic lives in `Sources/AIUsageCore/` and gets a check first. Providers are data, so adding or fixing one is a JSON edit. See [AGENTS.md](AGENTS.md) for the rules (AppKit only, no packages, memory under 30 MB).
 
 | Path | What |
 |------|------|
-| `Sources/AIUsageCore/` | Provider format parsing, mapping, process runner, environment, pixel font, menu model |
+| `Sources/AIUsageCore/` | Provider format, mapping, process runner, environment, pixel font, menu model |
 | `Sources/AIUsage/` | AppKit shell: `StatusController` (icon, menu), `Poller` (schedule) |
 | `Sources/CoreChecks/` | Check runner |
 | `Resources/` | `Info.plist`, `AppIcon.icns`, shipped `providers/` |
-| `example/` | Maestri's provider format guide and its shipped examples |
-| `docs/data-source/` | Research notes on each provider's usage source |
+| `example/` | Maestri's provider format guide and examples |
+| `docs/specs/` | Design notes: menu bar, data sources, release |
 
-## Resource use
-
-Measured on macOS 26.7 one minute after launch, with all four providers refreshed: physical footprint 11 MB, CPU 0.0%, release binary 360 KB. Provider CLIs run as short-lived child processes and are not part of that number.
-
-## Not yet verified
-
-- Launch at Login (`SMAppService.mainApp`) for an ad hoc signed app.
-- Installing from the DMG on another Mac (Gatekeeper's **Open Anyway** step).
+The app icon is drawn by `scripts/make-icon.swift`; edit it and run `swift scripts/make-icon.swift`. Maintainers: releases are made with `scripts/release.sh`, see [docs/specs/release](docs/specs/release/release.md).
