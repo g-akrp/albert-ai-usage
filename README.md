@@ -11,6 +11,24 @@ AI Usage is a small native menu bar app for **Claude Code**, **Codex**, **GitHub
 - **Hide or turn off.** Hide a card, or switch a provider off so it never runs.
 - **Light on resources.** About 11 MB of memory, no Dock icon, no third-party packages, AppKit only.
 
+## The icon at a glance
+
+![The menu bar icon in each state, on a dark and a light menu bar](docs/images/showcase.png)
+
+Top row: the provider (`CLD` Claude Code, `CDX` Codex, `AGY` Antigravity, `GHC` GitHub Copilot) in its brand color, or the first three letters of a pinned limit such as `GEM`. Bottom row: the headline percent, colored by the highest used percent across all the provider's limits. `ERR` means the provider failed; `--` means no data yet.
+
+## The panel
+
+![The panel with a card per provider, in light and dark appearance](docs/images/panel.png)
+
+Click the icon to open the panel, one card per provider:
+
+- **Rings.** Concentric rings, session outermost, then weekly. The center shows the headline percent.
+- **Rows.** Each limit has a colored percent pill, its reset time in your time zone, and the time left.
+- **Groups.** A provider with model groups, like Antigravity, gets one chart per group.
+- **Pin and Hide.** Hover a card for **Hide** and **Pin**. The pinned provider or limit is what the menu bar icon shows.
+- **Menu.** Under the cards: **Refresh Now**, **Providers**, **Launch at Login**, and **Quit**.
+
 ## Requirements
 
 - macOS 13 or later.
@@ -102,5 +120,15 @@ The checks are an executable target, not XCTest, because XCTest does not build w
 | `Resources/` | `Info.plist`, `AppIcon.icns`, shipped `providers/` |
 | `example/` | Maestri's provider format guide and examples |
 | `docs/specs/` | Design notes: menu bar, data sources, release |
+
+The two pictures above are drawn from the app's own font, colors, and card view, with sample data:
+
+```
+swiftc -parse-as-library -o build/make-showcase Sources/AIUsageCore/*.swift scripts/make-showcase.swift
+build/make-showcase
+grep -v '^import AIUsageCore$' Sources/AIUsage/CardView.swift > build/CardView.swift
+swiftc -parse-as-library -o build/make-panel Sources/AIUsageCore/*.swift build/CardView.swift scripts/make-panel.swift
+build/make-panel
+```
 
 The app icon is drawn by `scripts/make-icon.swift`; edit it and run `swift scripts/make-icon.swift`. Maintainers: releases are made with `scripts/release.sh`, see [docs/specs/release](docs/specs/release/release.md).
