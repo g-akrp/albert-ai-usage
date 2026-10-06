@@ -3,7 +3,8 @@ import AppKit
 
 /// One provider card in the menu: pin and title on top, then per chart a concentric ring chart on
 /// the left and one row per ring on the right. Clicking a pin calls `onPin` with its `Pin` key; the
-/// Hide button that shows while the pointer is over the card calls `onHide` with the card's id.
+/// Hide button that shows while the pointer is over the card calls `onHide` with the card's id, and its
+/// up and down buttons call `onMove` with the card's id and -1 or 1.
 final class CardView: NSView {
     private static let minWidth: CGFloat = 300, chartSize: CGFloat = 76
     private static let thickness: CGFloat = 5, gap: CGFloat = 2, pinSize: CGFloat = 13, box: CGFloat = 19
@@ -18,7 +19,7 @@ final class CardView: NSView {
 
     /// `rect` is where a click counts; `box` is the outlined button drawn around the pin icon.
     private struct PinTarget {
-        enum Kind { case pin(pinned: Bool), hide }
+        enum Kind { case pin(pinned: Bool), hide, move(step: Int) }
         let rect: NSRect, box: NSRect, key: String, label: String, kind: Kind
     }
 
@@ -31,12 +32,16 @@ final class CardView: NSView {
     /// The text button that pins: "Pin", or "Pinned" (always shown) for the current pin. Same width for both.
     private static let pinFont = NSFont.menuFont(ofSize: 11)
     private static let pinWidth = ceil(NSAttributedString(string: "Pinned", attributes: [.font: pinFont]).size().width) + 16
+    /// The two arrow buttons that reorder a card sit left of Hide, each `box` wide, 4 pt apart.
+    private static let moveSpace = 2 * (box + 4)
 
     private let card: Card
     private let width: CGFloat
     private let leading: CGFloat
     private let onPin: (String) -> Void
     private let onHide: (String) -> Void
+    private let onMove: (String, Int) -> Void
+    private let canMoveUp: Bool, canMoveDown: Bool
     private var cardHovered = false
     private var targets: [PinTarget] = []
     private var hovered: Int?
@@ -56,7 +61,7 @@ final class CardView: NSView {
         let columnX = leading + chartSize + large, indent = leading, pinSpace = pinWidth + 6
         var widest = minWidth
         for card in cards {
-            widest = max(widest, indent + size(card.title, boldTitleFont) + large + pinSpace + hideWidth + leading)
+            widest = max(widest, indent + size(card.title, boldTitleFont) + large + pinSpace + hideWidth + moveSpace + leading)
             if let account = card.subtitle { widest = max(widest, indent + size(account, bodyFont) + leading) }
             for notice in [card.message].compactMap({ $0 }) + card.notices {
                 widest = max(widest, indent + size(notice.text, bodyFont) + leading)
@@ -78,8 +83,12 @@ final class CardView: NSView {
         return ceil(widest)
     }
 
-    init(card: Card, width: CGFloat, leading: CGFloat, onPin: @escaping (String) -> Void, onHide: @escaping (String) -> Void) {
+    init(card: Card, width: CGFloat, leading: CGFloat, canMoveUp: Bool, canMoveDown: Bool,
+         onPin: @escaping (String) -> Void, onHide: @escaping (String) -> Void, onMove: @escaping (String, Int) -> Void) {
         self.card = card
+        self.canMoveUp = canMoveUp
+        self.canMoveDown = canMoveDown
+        self.onMove = onMove
         self.width = width
         self.leading = leading + Self.innerPad
         self.onPin = onPin
@@ -117,7 +126,7 @@ final class CardView: NSView {
     private func target(at event: NSEvent) -> Int? {
         let point = convert(event.locationInWindow, from: nil)
         return targets.firstIndex { target in
-            if case .hide = target.kind, !cardHovered { return false }
+            if case .pin = target.kind {} else if !cardHovered { return false }
             return target.rect.contains(point)
         }
     }
@@ -155,6 +164,7 @@ final class CardView: NSView {
         switch targets[index].kind {
         case .pin: onPin(targets[index].key)
         case .hide: onHide(targets[index].key)
+        case .move(let step): onMove(targets[index].key, step)
         }
     }
 
@@ -169,8 +179,11 @@ final class CardView: NSView {
 
         text(card.title, font: card.pinned ? Self.boldTitleFont : Self.titleFont, color: .labelColor,
              at: NSPoint(x: indent, y: y), height: titleLine, draw: draw)
-        // Hide is recorded first so it wins where its box overlaps the pin's wide hover area.
-        hideButton(at: NSPoint(x: right - Self.pinWidth - 6 - Self.hideWidth, y: y + (titleLine - Self.box) / 2), draw: draw)
+        // Hide and the arrows are recorded first so they win where their boxes overlap the pin's wide hover area.
+        let hideX = right - Self.pinWidth - 6 - Self.hideWidth, buttonY = y + (titleLine - Self.box) / 2
+        hideButton(at: NSPoint(x: hideX, y: buttonY), draw: draw)
+        if canMoveDown { moveButton(1, at: NSPoint(x: hideX - 4 - Self.box, y: buttonY), draw: draw) }
+        if canMoveUp { moveButton(-1, at: NSPoint(x: hideX - 8 - 2 * Self.box, y: buttonY), draw: draw) }
         pin(card.pinned, key: card.pin, label: name,
             at: NSPoint(x: right - Self.pinWidth, y: y + (titleLine - Self.box) / 2),
             hit: NSRect(x: x, y: y, width: right - x, height: titleLine), draw: draw)
@@ -312,12 +325,21 @@ final class CardView: NSView {
         button(.hide, key: card.id, label: name, at: origin, hit: hit, draw: draw)
     }
 
+    /// An up (`-1`) or down (`1`) arrow button; drawn only while the pointer is over the card.
+    private func moveButton(_ step: Int, at origin: NSPoint, draw: Bool) {
+        let hit = NSRect(origin: origin, size: NSSize(width: Self.box, height: Self.box)).insetBy(dx: -2, dy: -2)
+        button(.move(step: step), key: card.id, label: name, at: origin, hit: hit, draw: draw)
+    }
+
     /// Records the click area; draws an outlined text button that reacts to hover and press.
     private func button(_ kind: PinTarget.Kind, key: String, label: String, at origin: NSPoint, hit: NSRect, draw: Bool) {
         var pinned = false, width = Self.hideWidth, title = Self.hideLabel
         if case .pin(let value) = kind {
             (pinned, width) = (value, Self.pinWidth)
             title = NSAttributedString(string: value ? "Pinned" : "Pin", attributes: [.font: Self.pinFont])
+        } else if case .move(let step) = kind {
+            width = Self.box
+            title = NSAttributedString(string: step < 0 ? "\u{2191}" : "\u{2193}", attributes: [.font: Self.pinFont])
         }
         let box = NSRect(origin: origin, size: NSSize(width: width, height: Self.box))
         let index = targets.count
@@ -379,12 +401,14 @@ final class CardView: NSView {
                 switch target.kind {
                 case .pin: self?.onPin(target.key)
                 case .hide: self?.onHide(target.key)
+                case .move(let step): self?.onMove(target.key, step)
                 }
             })
             element.setAccessibilityRole(.button)
             switch target.kind {
             case .pin(let pinned): element.setAccessibilityLabel("\(pinned ? "Unpin" : "Pin") \(target.label)")
             case .hide: element.setAccessibilityLabel("Hide \(target.label)")
+            case .move(let step): element.setAccessibilityLabel("Move \(target.label) \(step < 0 ? "up" : "down")")
             }
             element.setAccessibilityParent(self)
             element.setAccessibilityFrameInParentSpace(target.rect)

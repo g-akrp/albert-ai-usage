@@ -421,5 +421,25 @@ func cardChecks() {
     check("allCardsHiddenHint", cardIds(none).isEmpty && none.contains(.detail("All cards are hidden", .secondary)))
     check("hiddenCardStillDefaultPin", cardIds(some).first == "claude" && Pin.effective(nil, in: runs(["copilot:a"])) == "copilot:a")
     check("hiddenCardKeepsPinState", entries(["claude", "copilot:a"], hidden: ["claude"], pinned: "claude").contains { if case .card(let c) = $0 { return c.id == "copilot:a" && !c.pinned }; return false })
+
+    // Card order: default Claude, Codex, Antigravity, Copilot; a saved order wins; new cards go last.
+    func orderIds(_ ids: [String], saved: [String] = []) -> [String] { CardOrder.sorted(runs(ids), saved: saved).map(\.id) }
+    check("defaultOrder", orderIds(["antigravity", "claude", "codex", "copilot:a"]) == ["claude", "codex", "antigravity", "copilot:a"])
+    check("defaultOrderUnknownLast", orderIds(["zzz", "copilot:b", "claude", "aaa", "copilot:a"]) == ["claude", "copilot:b", "copilot:a", "zzz", "aaa"])
+    check("defaultSortedIds", CardOrder.defaultSorted(["antigravity", "claude", "codex", "copilot"]) == ["claude", "codex", "antigravity", "copilot"])
+    check("savedOrderWins", orderIds(["claude", "codex", "antigravity"], saved: ["antigravity", "claude", "codex"]) == ["antigravity", "claude", "codex"])
+    check("savedOrderNewCardsLast", orderIds(["claude", "codex", "antigravity"], saved: ["codex", "claude"]) == ["codex", "claude", "antigravity"])
+    check("savedOrderStaleIgnored", orderIds(["claude", "codex"], saved: ["gone", "codex"]) == ["codex", "claude"])
+    let current = ["claude", "codex", "antigravity", "copilot:a"]
+    check("moveDown", CardOrder.moved("claude", by: 1, in: current, hidden: []) == ["codex", "claude", "antigravity", "copilot:a"])
+    check("moveUp", CardOrder.moved("antigravity", by: -1, in: current, hidden: []) == ["claude", "antigravity", "codex", "copilot:a"])
+    check("moveTopUpStays", CardOrder.moved("claude", by: -1, in: current, hidden: []) == current)
+    check("moveBottomDownStays", CardOrder.moved("copilot:a", by: 1, in: current, hidden: []) == current)
+    check("moveUnknownStays", CardOrder.moved("nope", by: 1, in: current, hidden: []) == current)
+    check("moveSkipsHidden", CardOrder.moved("claude", by: 1, in: current, hidden: ["codex"]) == ["antigravity", "codex", "claude", "copilot:a"])
+    check("moveHiddenOnlyNeighbor", CardOrder.moved("antigravity", by: 1, in: current, hidden: ["copilot:a"]) == current)
+    let ordered = MenuModel.entries(runs: runs(["claude", "codex", "antigravity"]), pinned: nil, configErrors: [], updated: nil,
+                                    launchAtLogin: false, version: "1", order: ["antigravity", "claude", "codex"], formatReset: { _ in "" })
+    check("menuUsesSavedOrder", cardIds(ordered) == ["antigravity", "claude", "codex"])
 }
 

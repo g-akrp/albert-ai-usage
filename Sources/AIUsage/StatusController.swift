@@ -37,6 +37,12 @@ final class StatusController: NSObject, NSMenuDelegate {
         set { defaults.set(newValue.sorted(), forKey: "hiddenCards") }
     }
 
+    /// Run ids in the order the user arranged the cards; empty until a card is moved.
+    private var cardOrder: [String] {
+        get { defaults.stringArray(forKey: "cardOrder") ?? [] }
+        set { defaults.set(newValue, forKey: "cardOrder") }
+    }
+
     private var pinned: String? {
         get { defaults.string(forKey: "pinnedProvider") }
         set { defaults.set(newValue, forKey: "pinnedProvider") }
@@ -124,25 +130,34 @@ final class StatusController: NSObject, NSMenuDelegate {
             },
             updated: poller.lastUpdate.map { "Updated \(timeFormatter.string(from: $0))" },
             launchAtLogin: SMAppService.mainApp.status == .enabled,
-            version: AppVersion.current, hidden: hiddenCards, formatReset: resetFormatter.string(from:))
+            version: AppVersion.current, hidden: hiddenCards, order: cardOrder, formatReset: resetFormatter.string(from:))
         cardLeading = SMAppService.mainApp.status == .enabled ? 22 : 14
         cardWidth = CardView.width(for: entries.compactMap { if case .card(let card) = $0 { return card }; return nil },
                                    leading: cardLeading)
         menu.removeAllItems()
-        entries.forEach { menu.addItem(item(for: $0)) }
+        let cardCount = entries.filter { if case .card = $0 { return true }; return false }.count
+        var cardIndex = 0
+        for entry in entries {
+            if case .card = entry { cardIndex += 1 }
+            menu.addItem(item(for: entry, position: (cardIndex - 1, cardCount)))
+        }
     }
 
-    private func item(for entry: MenuEntry) -> NSMenuItem {
+    /// `position` is the card's index and the card count; ignored for other entries.
+    private func item(for entry: MenuEntry, position: (index: Int, count: Int)) -> NSMenuItem {
         switch entry {
         case .separator:
             return .separator()
         case .card(let card):
             let item = NSMenuItem()
-            item.view = CardView(card: card, width: cardWidth, leading: cardLeading, onPin: { [weak self] key in
+            item.view = CardView(card: card, width: cardWidth, leading: cardLeading, canMoveUp: position.index > 0,
+                                 canMoveDown: position.index < position.count - 1, onPin: { [weak self] key in
                 self?.pinned = key
                 self?.updateIcons()
             }, onHide: { [weak self] id in
                 self?.hiddenCards.insert(id)
+            }, onMove: { [weak self] id, step in
+                self?.moveCard(id, by: step)
             })
             return item
         case .detail(let text, let tone):
@@ -233,6 +248,11 @@ final class StatusController: NSObject, NSMenuDelegate {
         disabled = set
         poller.disabled = set
         updateIcons()
+    }
+
+    private func moveCard(_ id: String, by step: Int) {
+        let ids = CardOrder.sorted(visibleRuns, saved: cardOrder).map(\.id)
+        cardOrder = CardOrder.moved(id, by: step, in: ids, hidden: hiddenCards)
     }
 
     @objc private func showCard(_ sender: NSMenuItem) {

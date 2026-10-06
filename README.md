@@ -26,7 +26,7 @@ Click the icon to open the panel, one card per provider:
 - **Rings.** Concentric rings, session outermost, then weekly. The center shows the headline percent.
 - **Rows.** Each limit has a colored percent pill, its reset time in your time zone, and the time left.
 - **Groups.** A provider with model groups, like Antigravity, gets one chart per group.
-- **Pin and Hide.** Hover a card for **Hide** and **Pin**. The pinned provider or limit is what the menu bar icon shows.
+- **Pin, Hide, and order.** Hover a card for **Pin**, **Hide**, and `↑` `↓` arrows that move it. The pinned provider or limit is what the menu bar icon shows. Default order: Claude Code, Codex, Antigravity, Copilot.
 - **Menu.** Under the cards: **Refresh Now**, **Providers**, **Launch at Login**, and **Quit**.
 
 ## Requirements

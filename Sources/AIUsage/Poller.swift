@@ -99,8 +99,8 @@ final class Poller {
         let loaded = ProviderStore.load(folders: folders)
         configErrors = loaded.errors
         configs = Dictionary(uniqueKeysWithValues: loaded.configs.map { ($0.id, $0) })
-        order = loaded.configs.map(\.id)
-        runs = loaded.configs.flatMap { config in
+        order = CardOrder.defaultSorted(loaded.configs.map(\.id))
+        runs = order.compactMap { configs[$0] }.flatMap { config in
             let previous = runs.filter { $0.configId == config.id }
             return previous.isEmpty ? [ProviderRun(config: config)] : previous
         }

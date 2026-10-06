@@ -46,11 +46,11 @@ public struct ProviderToggle: Equatable {
 public enum MenuModel {
     public static func entries(runs: [ProviderRun], pinned: String?, configErrors: [String],
                                providers: [ProviderToggle] = [], updated: String?,
-                               launchAtLogin: Bool, version: String, hidden: Set<String> = [], now: Date = Date(),
+                               launchAtLogin: Bool, version: String, hidden: Set<String> = [], order: [String] = [], now: Date = Date(),
                                formatReset: (Date) -> String) -> [MenuEntry] {
         var entries: [MenuEntry] = []
         let pin = Pin.effective(pinned, in: runs)
-        let shown = runs.filter { !hidden.contains($0.id) }
+        let shown = CardOrder.sorted(runs, saved: order).filter { !hidden.contains($0.id) }
         for run in shown {
             entries.append(.card(CardModel.card(run, pinned: pin, now: now, formatReset: formatReset)))
         }

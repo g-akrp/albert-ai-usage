@@ -74,7 +74,10 @@ func render(_ view: NSView) -> NSBitmapImageRep {
 
 /// One panel: the cards, a separator, then the plain items.
 func panel(_ appearance: NSAppearance, background: NSColor) -> (image: NSBitmapImageRep, size: NSSize) {
-    let views = cards.map { CardView(card: $0, width: panelWidth, leading: leading, onPin: { _ in }, onHide: { _ in }) }
+    let views = cards.enumerated().map { index, card in
+        CardView(card: card, width: panelWidth, leading: leading, canMoveUp: index > 0, canMoveDown: index < cards.count - 1,
+                 onPin: { _ in }, onHide: { _ in }, onMove: { _, _ in })
+    }
     let hosts = views.map { Backdrop($0, color: background, appearance: appearance) }
     let cardsHeight = views.reduce(0) { $0 + $1.frame.height }
     let size = NSSize(width: panelWidth, height: padding + cardsHeight + padding + 1 + padding + itemHeight * CGFloat(items.count) + padding)

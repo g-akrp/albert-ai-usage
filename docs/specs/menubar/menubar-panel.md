@@ -64,6 +64,13 @@ One chart per model group, stacked, each with its own group header and rings for
 └──────────────────────────────────────────────────┘
 ```
 
+## Card order
+
+- Default order: Claude Code, Codex, Antigravity, GitHub Copilot (by provider file id `claude`, `codex`, `antigravity`, `copilot`); any other provider follows, in id order. Copilot accounts keep the order `gh` lists them. The Providers submenu and the icon's default pin follow the same order.
+- While the pointer is over a card, two outlined arrow buttons, `↑` and `↓`, show in its title row, left of **Hide**. Clicking one swaps the card with its nearest visible neighbor and closes the menu. The top card has no `↑`; the bottom card has no `↓`. Hidden cards are stepped over and keep their place.
+- The order is saved by run id (user default `cardOrder`). A card not in the saved list, such as a new Copilot account, goes after the saved ones in default order. Saved ids that no longer exist are ignored.
+- There is no drag and drop: an `NSMenu` cannot reorder by dragging.
+
 ## Hide a card
 
 - While the pointer is over a card, an outlined text button labeled `Hide` (same style, hover and press feedback as the pin) shows in its title row, left of the pin. Clicking it hides that card and closes the menu.
