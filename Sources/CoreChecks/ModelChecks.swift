@@ -318,8 +318,10 @@ func cardChecks() {
     let now = Date(timeIntervalSince1970: 1_000_000)
     func relative(_ seconds: TimeInterval) -> String? { RelativeTime.text(until: now + seconds, now: now) }
     check("relativeTime", [relative(45), relative(1), relative(120), relative(119), relative(3 * 3600), relative(4 * 86_400),
-                           relative(86_399), relative(0), relative(-5)]
-          == ["in 45 seconds", "in 1 second", "in 2 minutes", "in 1 minute", "in 3 hours", "in 4 days", "in 23 hours", nil, nil])
+                           relative(86_399), relative(0), relative(-5), relative(3 * 3600 + 25 * 60 + 30), relative(3600 + 60), relative(3600 + 59),
+                           relative(4 * 86_400 + 2 * 3600 + 12 * 60 + 5), relative(86_400 + 60), relative(2 * 86_400 + 3600)]
+          == ["in 45s", "in 1s", "in 2m", "in 1m", "in 3h", "in 4d", "in 23h 59m", nil, nil,
+              "in 3h 25m", "in 1h 1m", "in 1h", "in 4d 2h 12m", "in 1d 1m", "in 2d 1h"])
 
     func win(_ id: String, _ label: String?, _ percent: Double?, seconds: Int? = nil, reset: TimeInterval? = nil) -> WindowReport {
         WindowReport(id: id, label: label, usedPercent: percent, resetsAt: reset.map { now + $0 }, durationSeconds: seconds)
@@ -347,7 +349,7 @@ func cardChecks() {
     let branded = CardModel.card(ProviderRun(id: "claude", name: "Claude Code", iconLabel: "CLD", iconColor: brand, result: .success(Report(meters: []))),
                                  pinned: nil, now: now, formatReset: { _ in "D" })
     check("cardAccentIsBrandColor", branded.accent == brand && claude.accent == .gray)
-    check("cardResetLines", claude.charts[0].rows.map(\.reset) == ["D \u{00B7} in 2 minutes", nil])
+    check("cardResetLines", claude.charts[0].rows.map(\.reset) == ["D \u{00B7} in 2m", nil])
     let past = card(make("c", "C", Report(meters: [MeterReport(id: "m", label: "M", windows: [win("a", "Session", 5, seconds: 18_000, reset: -1)])])))
     check("cardResetPast", past.charts[0].rows[0].reset == "resetting\u{2026}")
 

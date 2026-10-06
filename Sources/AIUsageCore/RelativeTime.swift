@@ -1,16 +1,13 @@
 import Foundation
 
 public enum RelativeTime {
-    /// "in 2 minutes": seconds under a minute, then minutes, hours, days, each rounded down.
-    /// `nil` when `date` is not after `now`.
+    /// Short countdown: "in 45s", "in 2m", "in 3h 25m", "in 4d 2h 12m". Each unit rounds down; zero parts after
+    /// seconds are skipped. `nil` when `date` is not after `now`.
     public static func text(until date: Date, now: Date) -> String? {
         let seconds = Int(date.timeIntervalSince(now))
         guard date > now else { return nil }
-        let (value, unit): (Int, String) =
-            seconds < 60 ? (max(seconds, 1), "second")
-            : seconds < 3600 ? (seconds / 60, "minute")
-            : seconds < 86_400 ? (seconds / 3600, "hour")
-            : (seconds / 86_400, "day")
-        return "in \(value) \(unit)\(value == 1 ? "" : "s")"
+        if seconds < 60 { return "in \(max(seconds, 1))s" }
+        let parts = [(seconds / 86_400, "d"), (seconds % 86_400 / 3600, "h"), (seconds % 3600 / 60, "m")]
+        return "in " + parts.filter { $0.0 > 0 }.map { "\($0.0)\($0.1)" }.joined(separator: " ")
     }
 }
