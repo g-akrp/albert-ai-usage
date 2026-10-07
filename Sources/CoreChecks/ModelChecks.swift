@@ -200,7 +200,16 @@ func iconChecks() {
 
 func menuChecks() {
     let utc = MenuModel.resetFormatter(timeZone: TimeZone(identifier: "UTC")!)
-    check("resetFormat", utc.string(from: Date(timeIntervalSince1970: 1791202619)) == "Oct 5, 12:16 PM")
+    check("resetFormat", utc.string(from: Date(timeIntervalSince1970: 1791202619)) == "(Mon) Oct 5, 12:16 PM")
+    let utcZone = TimeZone(identifier: "UTC")!
+    let resetAt = Date(timeIntervalSince1970: 1791202619)  // Mon Oct 5 12:16 UTC
+    func resetText(daysBefore: Double) -> String {
+        MenuModel.resetText(resetAt, now: resetAt.addingTimeInterval(-daysBefore * 86_400), timeZone: utcZone)
+    }
+    check("resetTextToday", resetText(daysBefore: 0.1) == "Today, 12:16 PM")
+    check("resetTextTomorrow", resetText(daysBefore: 1) == "Tomorrow, 12:16 PM")
+    check("resetTextLater", resetText(daysBefore: 2) == "(Mon) Oct 5, 12:16 PM")
+    check("resetTextMidnight", MenuModel.resetText(resetAt, now: Date(timeIntervalSince1970: 1791158400 - 3600), timeZone: utcZone) == "Tomorrow, 12:16 PM")
 
     let codex = sampleRun("codex", "Codex", "CDX", .success(sampleReport(95)))
     let failed = sampleRun("copilot", "GitHub Copilot", "GHC", .failure(ProviderFailure("timed out")))

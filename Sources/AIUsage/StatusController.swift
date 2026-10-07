@@ -8,7 +8,6 @@ final class StatusController: NSObject, NSMenuDelegate {
     private let defaults = UserDefaults.standard
     private let poller: Poller
     private let userFolder = ProviderStore.userFolder(home: NSHomeDirectory())
-    private let resetFormatter = MenuModel.resetFormatter()
     private let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
@@ -136,7 +135,7 @@ final class StatusController: NSObject, NSMenuDelegate {
             },
             updated: poller.lastUpdate.map { "Updated \(timeFormatter.string(from: $0))" },
             launchAtLogin: SMAppService.mainApp.status == .enabled,
-            version: AppVersion.current, hidden: hiddenCards, order: cardOrder, formatReset: resetFormatter.string(from:))
+            version: AppVersion.current, hidden: hiddenCards, order: cardOrder, formatReset: { MenuModel.resetText($0, now: Date()) })
         cardLeading = SMAppService.mainApp.status == .enabled ? 22 : 14
         cardWidth = CardView.width(for: entries.compactMap { if case .card(let card) = $0 { return card }; return nil },
                                    leading: cardLeading)

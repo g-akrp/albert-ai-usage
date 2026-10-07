@@ -74,13 +74,27 @@ public enum MenuModel {
         return entries
     }
 
-    /// Readable local time, for example "Oct 2, 2026 6:23 PM".
+    /// Readable local time with weekday, for example "(Sat) Oct 14, 10:31 AM".
     public static func resetFormatter(timeZone: TimeZone = .current) -> DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = timeZone
-        formatter.dateFormat = "MMM d, h:mm a"
+        formatter.dateFormat = "(EEE) MMM d, h:mm a"
         return formatter
+    }
+
+    /// Like `resetFormatter`, but "Today, 10:31 AM" or "Tomorrow, 10:31 AM" when `date` falls on those days.
+    public static func resetText(_ date: Date, now: Date, timeZone: TimeZone = .current) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let prefix = calendar.isDate(date, inSameDayAs: now) ? "Today"
+            : calendar.date(byAdding: .day, value: 1, to: now).map { calendar.isDate(date, inSameDayAs: $0) } == true ? "Tomorrow" : nil
+        guard let prefix else { return resetFormatter(timeZone: timeZone).string(from: date) }
+        let time = DateFormatter()
+        time.locale = Locale(identifier: "en_US_POSIX")
+        time.timeZone = timeZone
+        time.dateFormat = "h:mm a"
+        return "\(prefix), \(time.string(from: date))"
     }
 }
 

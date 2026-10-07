@@ -34,14 +34,13 @@ func liveRun() {
     let loaded = ProviderStore.load(folders: [URL(fileURLWithPath: "Resources/providers")])
     loaded.errors.forEach { print("CONFIG ERROR \($0)") }
     let runner = ProviderRunner(environment: environment)
-    let formatter = MenuModel.resetFormatter()
     for config in loaded.configs {
         let start = Date()
         let runs = runner.runAll(config)
         print(String(format: "== %@ (%.1fs)", config.id, Date().timeIntervalSince(start)))
         for run in runs {
         for entry in MenuModel.entries(runs: [run], pinned: nil, configErrors: [], updated: nil, launchAtLogin: false,
-                                       version: "", formatReset: formatter.string(from:)) {
+                                       version: "", formatReset: { MenuModel.resetText($0, now: Date()) }) {
             if case .card(let card) = entry {
                 print("\(card.title)  \(card.message.map { $0.text } ?? "")")
                 card.notices.forEach { print("  \($0.text)") }
