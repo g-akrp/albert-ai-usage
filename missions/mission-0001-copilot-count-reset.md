@@ -18,7 +18,7 @@ CoreChecks first (failing), then Core, then Model+UI, then provider JSON, then d
 | - | - | - | - |
 | T1 | Failing CoreChecks | Sources/CoreChecks | done (16e4292), Gauge PASS |
 | T2 | Core: resetsAt.from root + window count | Sources/AIUsageCore (ProviderConfig, Report, ProviderRunner) | done (4175fe5), Gauge PASS |
-| T3 | Model+UI: row count text | CardModel, MenuModel, Sources/AIUsage/CardView | done (074aacc), verify pending |
+| T3 | Model+UI: row count text | CardModel, MenuModel, Sources/AIUsage/CardView | done (074aacc), Gauge PASS |
 | T4 | copilot.json revision 5 | Resources/providers/copilot.json | done (68cbc35), match held |
 | T5 | Docs: resetsAt.from and count | example/AGENTS.md, README.md | done (6c3da5d), README only |
 
@@ -41,11 +41,13 @@ T4: Anvil, copilot.json: revision 5, resetsAt root on 3 meters, premium count (c
 T5: Anvil, README.md only: resetsAt.from and count bullets added to additions list in 'Add or change a provider'. example/AGENTS.md skipped on purpose: Maestri-owned base format doc that lists no project extensions. Commit 6c3da5d.
 
 ## Final summary
-(pending)
+T1-T5 done. Gauge PASS on all (T1, T2, T3, T4, T5). swift build and swift run CoreChecks ALL PASS. Lens review: no specs/ or CHANGES.md edits, no blocking findings. Commits: 16e4292, 4175fe5, 074aacc, 68cbc35, 6c3da5d.
 
 ## Open issues
-- OPEN: premium match deviates from spec github-copilot.md line 21 (has_quota true) pending Project Lead decision relayed by human. Check copilotShowsExhaustedQuota (ModelChecks.swift) expects the old behaviour.
-- example/AGENTS.md not updated (see T5). Brief said add there; skipped, needs human OK.
+- RESOLVED: PL decided premium match stays entitlement != 0 / unlimited false; chat and completions keep has_quota true. Code already matches the updated spec (uncommitted on main working tree). Floor copy of github-copilot.md still has the old line 21; Repo Lead/PL to carry the update, nobody edits specs here.
+- example/AGENTS.md not updated (see T5): Maestri-owned base format doc, data-source.md points to README for extensions. Needs human OK if wanted.
+- Lens note: Report.swift:98 resetsAt.from root uses root after map.root; spec wording ambiguous. No effect on Copilot (no map.root). PL may clarify.
+- Not visually checked in the running app (pill widths follow measured percentText).
 - Disk nearly full (2.7Gi free); scratch worktree builds fail.
 - Crew: Anvil (Coder), Gauge (Tester), Lens (Reviewer).
 - Spec edits: task brief says nobody edits specs/, so no repo-spec tasks.
