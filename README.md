@@ -93,6 +93,8 @@ The format is the Maestri Agent Usage format, documented in [example/AGENTS.md](
 - `iconColor`: `"RRGGBB"`. Default: gray.
 - `"as": "remainingPercent"` for `used`: 0 to 100 left.
 - `match` on a meter or window: the same predicates as `expect`; a value where one fails is skipped. Also `notEquals`.
+- `resetsAt.from`: `"root"` reads the reset `path` from the top-level value of the answer instead of the window's value. Without it the path is relative to the window.
+- `count` on a window: `{ "limit": {"path": ...}, "remaining": {"path": ...}, "unit": {"text": ..., "match": [...]} }`. Both paths are relative to the window's value and must be numbers. Used is `limit - remaining`, not clamped, so overage shows used above the limit. `unit` is optional: its `text` is shown only when every `match` condition (same form as on meters) holds, otherwise the count has no unit. A window is given no count when `limit` is missing or 0, or `remaining` is missing. The count never changes the used percent, the ring, or the icon value.
 - `accounts`: run the provider once per account. `source` lists the accounts, `each` points to the list, `id` to each account's name, and an optional `match` filters them. `${account}` in `args` and `env` is replaced by the name.
 
 How providers run:
