@@ -18,9 +18,9 @@ CoreChecks first (failing), then Core, then Model+UI, then provider JSON, then d
 | - | - | - | - |
 | T1 | Failing CoreChecks | Sources/CoreChecks | done (16e4292), Gauge PASS |
 | T2 | Core: resetsAt.from root + window count | Sources/AIUsageCore (ProviderConfig, Report, ProviderRunner) | done (4175fe5), Gauge PASS |
-| T3 | Model+UI: row count text | CardModel, MenuModel, Sources/AIUsage/CardView | done (074aacc), tester verify pending |
-| T4 | copilot.json revision 5 | Resources/providers/copilot.json | todo |
-| T5 | Docs: resetsAt.from and count | example/AGENTS.md, README.md | todo |
+| T3 | Model+UI: row count text | CardModel, MenuModel, Sources/AIUsage/CardView | done (074aacc), verify pending |
+| T4 | copilot.json revision 5 | Resources/providers/copilot.json | done (68cbc35), match held |
+| T5 | Docs: resetsAt.from and count | example/AGENTS.md, README.md | done (6c3da5d), README only |
 
 ### Briefs (each: file, one change, acceptance, constraints)
 T1. File: Sources/CoreChecks (ModelChecks.swift, RunnerChecks.swift). Change: add checks, read specs first. Cover: (a) resetsAt.from root reads reset from the top-level answer; (b) count parse: limit 0 or missing, remaining missing, conditional unit matches only when condition true, overage unclamped (used = limit - remaining); (c) row pill text "63% · 6280/10000 credits" and "63% · 120/300" (no unit); (d) collapsed pills percent-only. Acceptance: `swift build` passes; `swift run CoreChecks` fails only on the new checks (compile errors on missing types are acceptable only if stubs are not added; prefer checks that compile and fail). Constraints: no edits outside Sources/CoreChecks; no specs/ or CHANGES.md edits.
@@ -36,9 +36,16 @@ T2: Anvil changed ProviderConfig.swift (resetsAt.from root, CountSpec parse) and
 
 T3: Anvil changed CardModel.swift only. CardRow.percentText now includes count; new CardRow.percentOnly feeds collapsed pills; merged Copilot chart passes window count through. CardView and MenuModel unchanged: Anvil says widths derive from measured percentText. Build passes, CoreChecks all pass. Not visually checked in running app. Commit 074aacc.
 
+T4: Anvil, copilot.json: revision 5, resetsAt root on 3 meters, premium count (credits unit when /token_based_billing true). Premium match kept ORIGINAL (/entitlement notEquals 0, unlimited false) per human hold, because spec github-copilot.md says has_quota true and conflicts with existing check copilotShowsExhaustedQuota. Build ok, CoreChecks ALL PASS. Commit 68cbc35.
+
+T5: Anvil, README.md only: resetsAt.from and count bullets added to additions list in 'Add or change a provider'. example/AGENTS.md skipped on purpose: Maestri-owned base format doc that lists no project extensions. Commit 6c3da5d.
+
 ## Final summary
 (pending)
 
 ## Open issues
+- OPEN: premium match deviates from spec github-copilot.md line 21 (has_quota true) pending Project Lead decision relayed by human. Check copilotShowsExhaustedQuota (ModelChecks.swift) expects the old behaviour.
+- example/AGENTS.md not updated (see T5). Brief said add there; skipped, needs human OK.
+- Disk nearly full (2.7Gi free); scratch worktree builds fail.
 - Crew: Anvil (Coder), Gauge (Tester), Lens (Reviewer).
 - Spec edits: task brief says nobody edits specs/, so no repo-spec tasks.
