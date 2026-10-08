@@ -16,8 +16,8 @@ CoreChecks first (failing), then Core, then Model+UI, then provider JSON, then d
 ## Task list
 | ID | Task | File area | Status |
 | - | - | - | - |
-| T1 | Failing CoreChecks | Sources/CoreChecks | done (16e4292), tester verify pending |
-| T2 | Core: resetsAt.from root + window count | Sources/AIUsageCore (ProviderConfig, Report, ProviderRunner) | todo |
+| T1 | Failing CoreChecks | Sources/CoreChecks | done (16e4292), Gauge PASS |
+| T2 | Core: resetsAt.from root + window count | Sources/AIUsageCore (ProviderConfig, Report, ProviderRunner) | done (4175fe5), tester verify pending |
 | T3 | Model+UI: row count text | CardModel, MenuModel, Sources/AIUsage/CardView | todo |
 | T4 | copilot.json revision 5 | Resources/providers/copilot.json | todo |
 | T5 | Docs: resetsAt.from and count | example/AGENTS.md, README.md | todo |
@@ -30,7 +30,9 @@ T4. File: Resources/providers/copilot.json. Change: revision 4 to 5; resetsAt {f
 T5. Files: example/AGENTS.md, README.md. Change: document resetsAt.from and count in provider-format sections. Acceptance: text matches spec data-source.md wording. Constraints: docs only; no specs/CHANGES edits.
 
 ## Per-task result
-T1: Anvil added countChecks() in ModelChecks.swift, called from cardChecks. Build passes; CoreChecks 6 FAILED, all new: resetFromRoot, countCredits, countUnitOnlyWhenConditionTrue, countUnitConditionMissing, countNoUnitSpec, countOverageUnclamped. Guard checks already passing. Commit 16e4292.
+T1: Anvil added countChecks() in ModelChecks.swift, called from cardChecks. Build passes; CoreChecks 6 FAILED, all new: resetFromRoot, countCredits, countUnitOnlyWhenConditionTrue, countUnitConditionMissing, countNoUnitSpec, countOverageUnclamped. Guard checks already passing. Commit 16e4292. Gauge PASS.
+
+T2: Anvil changed ProviderConfig.swift (resetsAt.from root, CountSpec parse) and Report.swift (WindowCount, WindowReport.count, Mapper root-scope reset and count; used=limit-remaining unclamped; none when limit 0/missing or remaining missing; unit only when match holds). ProviderRunner.swift unchanged, not needed. Build passes. resetFromRoot passes; 5 pill-text checks still fail (T3 scope): countCredits, countUnitOnlyWhenConditionTrue, countUnitConditionMissing, countNoUnitSpec, countOverageUnclamped. Commit 4175fe5.
 
 ## Final summary
 (pending)
