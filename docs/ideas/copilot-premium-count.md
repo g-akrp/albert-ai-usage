@@ -1,6 +1,6 @@
 # Copilot premium interactions: used/quota count
 
-Status: approved (2026-10-08), specs updated; see CHANGES.md
+Status: implemented (2026-10-08, merge bb99247); see CHANGES.md
 Date: 2026-10-08
 
 ## Problem
