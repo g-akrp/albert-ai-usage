@@ -18,7 +18,8 @@ For each account: `gh auth token --user <account>` sets `GH_TOKEN` inside that c
   - Completions (`completions`)
   - Premium Interactions (`premium_interactions`)
 - Premium Interactions also has a count: limit `entitlement`, remaining `quota_remaining`, so used is `entitlement - quota_remaining`. Unit `credits` when `token_based_billing` is true, no unit when it is false. Chat and Completions have no count. (Internal endpoint: `token_based_billing` true means the numbers are AI credits, 1 credit = $0.01. `credits_used` is not used. See `docs/ideas/copilot-premium-count.research.md`.)
-- A meter is skipped unless `has_quota` is true and `unlimited` is false. Copilot Free has no premium requests, reported as 0% remaining, so the meter is hidden.
+- Chat and Completions are skipped unless `has_quota` is true and `unlimited` is false.
+- Premium Interactions is skipped when `entitlement` is 0 or `unlimited` is true. `has_quota` is not tested, so an account whose quota is used up (`has_quota` false, `entitlement` above 0) still shows the meter at 100%. Copilot Free has no premium requests (`entitlement` 0), so the meter is hidden.
 
 ## Icon value
 

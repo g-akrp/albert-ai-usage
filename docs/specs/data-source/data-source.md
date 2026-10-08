@@ -21,7 +21,7 @@ A provider is a JSON file: which program to run and how to map its answer to lim
 
 A report: optional plan, optional flags (`available`, `access`), and meters. A meter has windows with used percent, reset time, length, and an optional count.
 
-- **Reset from the root:** `resetsAt` may carry `"from": "root"`. Its `path` is then read from the top-level value of the answer (the `root` scope), not from the window's value. Without it the path is relative to the window, as before.
+- **Reset from the root:** `resetsAt` may carry `"from": "root"`. Its `path` is then read from the `root` scope (the value at the map's `root`, the whole answer when `root` is not set), not from the window's value. Without it the path is relative to the window, as before.
 - **Count:** a window may carry `count`, `{ "limit": {"path": ...}, "remaining": {"path": ...}, "unit": {"text": ..., "match": [...]} }`. Both paths are relative to the window's value and must be numbers. Used is `limit - remaining`, not clamped, so overage shows used above the limit. `unit` is optional: its `text` is shown only when every `match` condition (same form as on meters) holds, otherwise the count has no unit. A window is given no count when `limit` is missing or 0, or `remaining` is missing. The count never changes the used percent, the ring, or the icon value.
 
 ## Running
