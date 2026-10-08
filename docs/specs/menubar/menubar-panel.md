@@ -40,9 +40,9 @@ Card content starts at the same left edge as the text of the other menu items: 1
 
 ### Rows
 
-- Each ring has a row: a dot in the ring's color, the label, and the used percent in a pill at the right (rounded, tinted with the percent's tone at 16% opacity, text in the tone color) so the value reads on any menu background.
+- Each ring has a row: a dot in the ring's color, the label, and the used percent in a pill at the right (rounded, tinted with the percent's tone at 16% opacity, text in the tone color) so the value reads on any menu background. A window with a count (Copilot Premium Interactions) shows it in the same pill after the percent, a middle dot between: `63% · 6280/10000 credits`, or `63% · 120/300` when the count has no unit. Numbers are rounded to whole numbers, with no digit grouping. Used above the limit shows as is (`10320/10000`). A collapsed card's pills show the percent only.
 - Spacing: 14 pt side margin, 12 pt top and bottom, 20 pt text lines, 8 pt between rows, 14 pt between charts, 4 pt between a header and what follows. A chart's rows are vertically centered against its rings when they are shorter than the rings.
-- Under it: the reset time in the local time zone, a middle dot, and the time until it, for example `Oct 5, 3:20 PM · in 2 minutes`. Relative units: seconds, minutes, hours, days (`in 1 minute`, `in 3 hours`, `in 4 days`). A reset time in the past shows `resetting…`. A window with no reset time (Copilot) shows no second line.
+- Under it: the reset time in the local time zone, a middle dot, and the time until it, for example `Oct 5, 3:20 PM · in 2 minutes`. Relative units: seconds, minutes, hours, days (`in 1 minute`, `in 3 hours`, `in 4 days`). A reset time in the past shows `resetting…`. A window with no reset time shows no second line.
 - The relative text is computed when the menu opens. It does not update while the menu stays open.
 
 ### Provider with several groups (Antigravity)
