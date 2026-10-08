@@ -10,7 +10,10 @@ public struct CardRing: Equatable {
 
 public struct CardRow: Equatable {
     public let label: String
+    /// The row's pill: the percent, then ` \u{00B7} used/limit[ unit]` when the window has a count.
     public let percentText: String
+    /// Just the percent, for a collapsed card's pills.
+    public let percentOnly: String
     public let tone: Tone
     /// `Oct 5, 3:20 PM · in 2 minutes`, `resetting…`, or `nil` without a reset time.
     public let reset: String?
@@ -71,7 +74,7 @@ extension Card {
     /// with several groups, each group's headline percent in the worst tone of its rings.
     public var pills: [CardPill] {
         if charts.count == 1 {
-            return charts[0].rows.prefix(Card.maxPills).map { CardPill(text: $0.percentText, tone: $0.tone) }
+            return charts[0].rows.prefix(Card.maxPills).map { CardPill(text: $0.percentOnly, tone: $0.tone) }
         }
         return charts.prefix(Card.maxPills).map { chart in
             CardPill(text: chart.center, tone: chart.rings.map(\.tone).max { Card.severity($0) < Card.severity($1) } ?? .secondary)
@@ -163,7 +166,12 @@ public enum CardModel {
         func center(_ meters: [MeterReport]) -> String { percentText(Report(meters: meters).headlinePercent) }
 
         func row(_ window: WindowReport, label: String, ring: Int?, pin: String? = nil) -> CardRow {
-            CardRow(label: label, percentText: percentText(window.usedPercent), tone: tone(window.usedPercent),
+            let percent = percentText(window.usedPercent)
+            let counted = window.count.map { count -> String in
+                let numbers = String(format: "%.0f/%.0f", count.used, count.limit)
+                return " \u{00B7} " + (count.unit.map { "\(numbers) \($0)" } ?? numbers)
+            } ?? ""
+            return CardRow(label: label, percentText: percent + counted, percentOnly: percent, tone: tone(window.usedPercent),
                     reset: reset(window), ringIndex: ring, pin: pin, pinned: pin != nil && pin == pinned)
         }
 
@@ -186,7 +194,7 @@ public enum CardModel {
         func groupRow(_ meter: MeterReport) -> CardRow {
             let percent = Report(meters: [meter]).headlinePercent
             let key = Pin.key(run: run, meter: meter.id)
-            return CardRow(label: meter.label, percentText: percentText(percent), tone: tone(percent), reset: nil,
+            return CardRow(label: meter.label, percentText: percentText(percent), percentOnly: percentText(percent), tone: tone(percent), reset: nil,
                            ringIndex: nil, pin: key, pinned: key == pinned)
         }
 
@@ -197,7 +205,8 @@ public enum CardModel {
                 .map(\.element)
             let rings = ordered.prefix(CardModel.maxRings).map { ring($0.maxPercent) }
             let rows = ordered.enumerated().map { index, meter in
-                row(WindowReport(id: meter.id, usedPercent: meter.maxPercent, resetsAt: meter.windows.first?.resetsAt),
+                row(WindowReport(id: meter.id, usedPercent: meter.maxPercent, resetsAt: meter.windows.first?.resetsAt,
+                                 count: meter.windows.first?.count),
                     label: meter.label, ring: index < CardModel.maxRings ? index : nil, pin: Pin.key(run: run, meter: meter.id))
             }
             return CardChart(title: nil, pin: nil, pinned: false, center: center(meters), rings: Array(rings), rows: rows)

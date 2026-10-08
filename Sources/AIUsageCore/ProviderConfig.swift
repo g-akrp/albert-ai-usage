@@ -168,8 +168,16 @@ public struct WindowSpec {
     public let id: IdSpec
     public let label: LabelSpec?
     public let used: (path: String, as: UsedAs)?
-    public let resetsAt: (path: String, as: ResetAs)?
+    /// `fromRoot`: the path is read from the top-level value of the answer, not the window's value.
+    public let resetsAt: (path: String, as: ResetAs, fromRoot: Bool)?
+    public let count: CountSpec?
     public let duration: DurationSpec?
+}
+
+public struct CountSpec {
+    public let limit: String
+    public let remaining: String
+    public let unit: (text: String, match: [Predicate])?
 }
 
 public enum UsedAs: String { case percent, fraction, remainingFraction, remainingPercent }
@@ -292,7 +300,13 @@ extension ProviderConfig {
                 (try u.string("path"), try u.enumValue("as", UsedAs.self))
             },
             resetsAt: try p.optional("resetsAt").map { r in
-                (try r.string("path"), try r.enumValue("as", ResetAs.self))
+                let from = try r.optionalString("from")
+                guard from == nil || from == "root" else { throw ConfigError("\(r.path)/from", "only \"root\" is understood") }
+                return (try r.string("path"), try r.enumValue("as", ResetAs.self), from == "root")
+            },
+            count: try p.optional("count").map { c in
+                CountSpec(limit: try c.child("limit").string("path"), remaining: try c.child("remaining").string("path"),
+                          unit: try c.optional("unit").map { (try $0.string("text"), try parsePredicates($0)) })
             },
             duration: try p.optional("duration").map { d in
                 if let seconds = try d.optionalInt("seconds") { return .seconds(seconds) }

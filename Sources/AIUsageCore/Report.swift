@@ -47,17 +47,29 @@ public enum WindowKind: Int, Comparable {
     public static func < (a: WindowKind, b: WindowKind) -> Bool { a.rawValue < b.rawValue }
 }
 
+/// A window's used and limit in its own unit. Used is `limit - remaining`, so it can exceed the limit.
+public struct WindowCount: Equatable {
+    public var used: Double
+    public var limit: Double
+    public var unit: String?
+
+    public init(used: Double, limit: Double, unit: String? = nil) {
+        (self.used, self.limit, self.unit) = (used, limit, unit)
+    }
+}
+
 public struct WindowReport: Equatable {
     public var id: String
     public var label: String?
     public var usedPercent: Double?
     public var resetsAt: Date?
     public var durationSeconds: Int?
+    public var count: WindowCount?
 
     public init(id: String, label: String? = nil, usedPercent: Double? = nil, resetsAt: Date? = nil,
-                durationSeconds: Int? = nil) {
-        (self.id, self.label, self.usedPercent, self.resetsAt, self.durationSeconds) =
-            (id, label, usedPercent, resetsAt, durationSeconds)
+                durationSeconds: Int? = nil, count: WindowCount? = nil) {
+        (self.id, self.label, self.usedPercent, self.resetsAt, self.durationSeconds, self.count) =
+            (id, label, usedPercent, resetsAt, durationSeconds, count)
     }
 
     /// Session: 5 hours, or labeled session or five hour. Weekly: 7 days, or labeled weekly.
@@ -83,7 +95,7 @@ public enum Mapper {
         }
         var meters: [MeterReport] = []
         for spec in map.meters {
-            for meter in mapMeter(spec, root) where !meters.contains(where: { $0.id == meter.id }) {
+            for meter in mapMeter(spec, root, answer: root) where !meters.contains(where: { $0.id == meter.id }) {
                 meters.append(meter)
             }
         }
@@ -109,13 +121,13 @@ public enum Mapper {
         }
     }
 
-    private static func mapMeter(_ spec: MeterSpec, _ root: Any) -> [MeterReport] {
+    private static func mapMeter(_ spec: MeterSpec, _ root: Any, answer: Any) -> [MeterReport] {
         scoped(root, spec.scope).compactMap { key, value in
             guard Predicate.allHold(spec.match, in: value), let id = resolveId(spec.id, value, key),
                   let label = resolveLabel(spec.label, value, key) else { return nil }
             var windows: [WindowReport] = []
             for windowSpec in spec.windows {
-                for window in mapWindow(windowSpec, value) where !windows.contains(where: { $0.id == window.id }) {
+                for window in mapWindow(windowSpec, value, answer: answer) where !windows.contains(where: { $0.id == window.id }) {
                     windows.append(window)
                 }
             }
@@ -123,18 +135,27 @@ public enum Mapper {
         }
     }
 
-    private static func mapWindow(_ spec: WindowSpec, _ meterValue: Any) -> [WindowReport] {
+    private static func mapWindow(_ spec: WindowSpec, _ meterValue: Any, answer: Any) -> [WindowReport] {
         scoped(meterValue, spec.scope).compactMap { key, value in
             let used = spec.used.flatMap { Convert.usedPercent(JSON.resolve(value, $0.path), $0.as) }
-            let resets = spec.resetsAt.flatMap { Convert.date(JSON.resolve(value, $0.path), $0.as) }
+            let resets = spec.resetsAt.flatMap { Convert.date(JSON.resolve($0.fromRoot ? answer : value, $0.path), $0.as) }
             // A window with neither a usage value nor a reset time is skipped.
             guard Predicate.allHold(spec.match, in: value), used != nil || resets != nil, let id = resolveId(spec.id, value, key) else { return nil }
             let duration = spec.duration.flatMap { Convert.durationSeconds(value, $0) }
             return WindowReport(
                 id: id,
                 label: spec.label.flatMap { resolveLabel($0, value, key) } ?? duration.map(Convert.durationLabel),
-                usedPercent: used, resetsAt: resets, durationSeconds: duration)
+                usedPercent: used, resetsAt: resets, durationSeconds: duration,
+                count: spec.count.flatMap { count($0, value) })
         }
+    }
+
+    /// No count when the limit is missing or 0, or the remaining is missing. The unit shows only when its conditions hold.
+    private static func count(_ spec: CountSpec, _ value: Any) -> WindowCount? {
+        guard let limit = JSON.number(JSON.resolve(value, spec.limit)), limit != 0,
+              let remaining = JSON.number(JSON.resolve(value, spec.remaining)) else { return nil }
+        let unit = spec.unit.flatMap { Predicate.allHold($0.match, in: value) ? $0.text : nil }
+        return WindowCount(used: limit - remaining, limit: limit, unit: unit)
     }
 
     private static func resolveId(_ spec: IdSpec, _ value: Any, _ key: String?) -> String? {

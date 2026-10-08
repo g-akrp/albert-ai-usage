@@ -460,5 +460,53 @@ func cardChecks() {
     let ordered = MenuModel.entries(runs: runs(["claude", "codex", "antigravity"]), pinned: nil, configErrors: [], updated: nil,
                                     launchAtLogin: false, version: "1", order: ["antigravity", "claude", "codex"], formatReset: { _ in "" })
     check("menuUsesSavedOrder", cardIds(ordered) == ["antigravity", "claude", "codex"])
+    countChecks()
+}
+
+/// Window count and `resetsAt.from: "root"` (docs/specs/data-source/data-source.md), through the Mapper and the card.
+private func countChecks() {
+    let count = #"""
+    "count": {"limit": {"path": "/ent"}, "remaining": {"path": "/rem"},
+              "unit": {"text": "credits", "match": [{"path": "/tbb", "equals": true}]}}
+    """#
+    func mapped(_ windowExtra: String, _ answer: String) -> (report: Report, card: Card) {
+        let provider = try! config(#"""
+        {"schemaVersion": 1, "id": "cnt", "revision": 1, "name": "Cnt", "source": {"type": "command", "executable": "x"},
+         "map": {"meters": [{"select": "/q", "id": "p", "label": {"text": "Premium"},
+           "windows": [{"id": "current", "used": {"path": "/pr", "as": "remainingPercent"}, \#(windowExtra)}]}]}}
+        """#)
+        let report = Mapper.apply(provider.map, to: json(answer))
+        let run = ProviderRun(id: "cnt", name: "Cnt", iconLabel: "X", iconColor: .gray, result: .success(report))
+        return (report, CardModel.card(run, pinned: nil, now: Date(timeIntervalSince1970: 1_000_000), formatReset: { _ in "D" }))
+    }
+    func pill(_ window: String, _ answer: String) -> String? { mapped(window, answer).card.charts.first?.rows.first?.percentText }
+
+    // (a) Reset read from the top-level answer.
+    let root = mapped(#""resetsAt": {"from": "root", "path": "/reset", "as": "iso8601"}"#,
+                      #"{"reset": "2026-10-05T12:16:59Z", "q": {"pr": 37}}"#)
+    check("resetFromRoot", root.report.meters.first?.windows.first?.resetsAt == Date(timeIntervalSince1970: 1791202619))
+    let relative = mapped(#""resetsAt": {"path": "/reset", "as": "iso8601"}"#,
+                          #"{"reset": "2026-10-05T12:16:59Z", "q": {"pr": 37, "reset": "2026-10-06T00:00:00Z"}}"#)
+    check("resetWithoutFromStaysRelative", relative.report.meters.first?.windows.first?.resetsAt == Date(timeIntervalSince1970: 1791244800))
+
+    // (b) Count parse, shown in the row pill text. Used = limit - remaining.
+    check("countCredits", pill(count, #"{"q": {"pr": 37, "ent": 10000, "rem": 3720, "tbb": true}}"#) == "63% \u{B7} 6280/10000 credits")
+    check("countUnitOnlyWhenConditionTrue", pill(count, #"{"q": {"pr": 37, "ent": 300, "rem": 180, "tbb": false}}"#) == "63% \u{B7} 120/300")
+    check("countUnitConditionMissing", pill(count, #"{"q": {"pr": 37, "ent": 300, "rem": 180}}"#) == "63% \u{B7} 120/300")
+    check("countNoUnitSpec", pill(#""count": {"limit": {"path": "/ent"}, "remaining": {"path": "/rem"}}"#,
+                                  #"{"q": {"pr": 37, "ent": 300, "rem": 180, "tbb": true}}"#) == "63% \u{B7} 120/300")
+    check("countOverageUnclamped", pill(count, #"{"q": {"pr": 0, "ent": 10000, "rem": -320, "tbb": true}}"#) == "100% \u{B7} 10320/10000 credits")
+    check("countLimitZeroNone", pill(count, #"{"q": {"pr": 37, "ent": 0, "rem": 0, "tbb": true}}"#) == "63%")
+    check("countLimitMissingNone", pill(count, #"{"q": {"pr": 37, "rem": 3720, "tbb": true}}"#) == "63%")
+    check("countRemainingMissingNone", pill(count, #"{"q": {"pr": 37, "ent": 10000, "tbb": true}}"#) == "63%")
+    check("countDoesNotChangePercent", mapped(count, #"{"q": {"pr": 37, "ent": 10000, "rem": 3720, "tbb": true}}"#)
+        .report.meters.first?.windows.first?.usedPercent == 63)
+
+    // (c) Row pill text with the count; no window count leaves the percent alone.
+    check("pillNoCount", pill(#""duration": {"seconds": 60}"#, #"{"q": {"pr": 37}}"#) == "63%")
+
+    // (d) Collapsed pills stay percent-only.
+    let collapsed = mapped(count, #"{"q": {"pr": 37, "ent": 10000, "rem": 3720, "tbb": true}}"#).card
+    check("collapsedPillsPercentOnly", collapsed.pills.map(\.text) == ["63%"])
 }
 
