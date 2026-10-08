@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "copilot",
-  "revision": 4,
+  "revision": 5,
   "name": "GitHub Copilot",
   "iconLabel": "GHC",
   "iconColor": "8957E5",
@@ -39,7 +39,11 @@
         "id": "chat",
         "label": { "text": "Chat" },
         "windows": [
-          { "id": "current", "used": { "path": "/percent_remaining", "as": "remainingPercent" } }
+          {
+            "id": "current",
+            "used": { "path": "/percent_remaining", "as": "remainingPercent" },
+            "resetsAt": { "from": "root", "path": "/quota_reset_date_utc", "as": "iso8601" }
+          }
         ]
       },
       {
@@ -48,7 +52,11 @@
         "id": "completions",
         "label": { "text": "Completions" },
         "windows": [
-          { "id": "current", "used": { "path": "/percent_remaining", "as": "remainingPercent" } }
+          {
+            "id": "current",
+            "used": { "path": "/percent_remaining", "as": "remainingPercent" },
+            "resetsAt": { "from": "root", "path": "/quota_reset_date_utc", "as": "iso8601" }
+          }
         ]
       },
       {
@@ -57,7 +65,16 @@
         "id": "premium_interactions",
         "label": { "text": "Premium Interactions" },
         "windows": [
-          { "id": "current", "used": { "path": "/percent_remaining", "as": "remainingPercent" } }
+          {
+            "id": "current",
+            "used": { "path": "/percent_remaining", "as": "remainingPercent" },
+            "resetsAt": { "from": "root", "path": "/quota_reset_date_utc", "as": "iso8601" },
+            "count": {
+              "limit": { "path": "/entitlement" },
+              "remaining": { "path": "/quota_remaining" },
+              "unit": { "text": "credits", "match": [{ "path": "/token_based_billing", "equals": true }] }
+            }
+          }
         ]
       }
     ]
