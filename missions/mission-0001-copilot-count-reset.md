@@ -16,7 +16,7 @@ CoreChecks first (failing), then Core, then Model+UI, then provider JSON, then d
 ## Task list
 | ID | Task | File area | Status |
 | - | - | - | - |
-| T1 | Failing CoreChecks | Sources/CoreChecks | todo |
+| T1 | Failing CoreChecks | Sources/CoreChecks | done (16e4292), tester verify pending |
 | T2 | Core: resetsAt.from root + window count | Sources/AIUsageCore (ProviderConfig, Report, ProviderRunner) | todo |
 | T3 | Model+UI: row count text | CardModel, MenuModel, Sources/AIUsage/CardView | todo |
 | T4 | copilot.json revision 5 | Resources/providers/copilot.json | todo |
@@ -30,11 +30,11 @@ T4. File: Resources/providers/copilot.json. Change: revision 4 to 5; resetsAt {f
 T5. Files: example/AGENTS.md, README.md. Change: document resetsAt.from and count in provider-format sections. Acceptance: text matches spec data-source.md wording. Constraints: docs only; no specs/CHANGES edits.
 
 ## Per-task result
-(none yet)
+T1: Anvil added countChecks() in ModelChecks.swift, called from cardChecks. Build passes; CoreChecks 6 FAILED, all new: resetFromRoot, countCredits, countUnitOnlyWhenConditionTrue, countUnitConditionMissing, countNoUnitSpec, countOverageUnclamped. Guard checks already passing. Commit 16e4292.
 
 ## Final summary
 (pending)
 
 ## Open issues
-- No Coder/Tester/Reviewer connected yet (only RL). Asked human to recruit via Repo Lead.
+- Crew: Anvil (Coder), Gauge (Tester), Lens (Reviewer).
 - Spec edits: task brief says nobody edits specs/, so no repo-spec tasks.
