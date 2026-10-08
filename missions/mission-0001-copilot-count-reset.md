@@ -17,8 +17,8 @@ CoreChecks first (failing), then Core, then Model+UI, then provider JSON, then d
 | ID | Task | File area | Status |
 | - | - | - | - |
 | T1 | Failing CoreChecks | Sources/CoreChecks | done (16e4292), Gauge PASS |
-| T2 | Core: resetsAt.from root + window count | Sources/AIUsageCore (ProviderConfig, Report, ProviderRunner) | done (4175fe5), tester verify pending |
-| T3 | Model+UI: row count text | CardModel, MenuModel, Sources/AIUsage/CardView | todo |
+| T2 | Core: resetsAt.from root + window count | Sources/AIUsageCore (ProviderConfig, Report, ProviderRunner) | done (4175fe5), Gauge PASS |
+| T3 | Model+UI: row count text | CardModel, MenuModel, Sources/AIUsage/CardView | done (074aacc), tester verify pending |
 | T4 | copilot.json revision 5 | Resources/providers/copilot.json | todo |
 | T5 | Docs: resetsAt.from and count | example/AGENTS.md, README.md | todo |
 
@@ -32,7 +32,9 @@ T5. Files: example/AGENTS.md, README.md. Change: document resetsAt.from and coun
 ## Per-task result
 T1: Anvil added countChecks() in ModelChecks.swift, called from cardChecks. Build passes; CoreChecks 6 FAILED, all new: resetFromRoot, countCredits, countUnitOnlyWhenConditionTrue, countUnitConditionMissing, countNoUnitSpec, countOverageUnclamped. Guard checks already passing. Commit 16e4292. Gauge PASS.
 
-T2: Anvil changed ProviderConfig.swift (resetsAt.from root, CountSpec parse) and Report.swift (WindowCount, WindowReport.count, Mapper root-scope reset and count; used=limit-remaining unclamped; none when limit 0/missing or remaining missing; unit only when match holds). ProviderRunner.swift unchanged, not needed. Build passes. resetFromRoot passes; 5 pill-text checks still fail (T3 scope): countCredits, countUnitOnlyWhenConditionTrue, countUnitConditionMissing, countNoUnitSpec, countOverageUnclamped. Commit 4175fe5.
+T2: Anvil changed ProviderConfig.swift (resetsAt.from root, CountSpec parse) and Report.swift (WindowCount, WindowReport.count, Mapper root-scope reset and count; used=limit-remaining unclamped; none when limit 0/missing or remaining missing; unit only when match holds). ProviderRunner.swift unchanged, not needed. Build passes. resetFromRoot passes; 5 pill-text checks still fail (T3 scope): countCredits, countUnitOnlyWhenConditionTrue, countUnitConditionMissing, countNoUnitSpec, countOverageUnclamped. Commit 4175fe5. Gauge PASS.
+
+T3: Anvil changed CardModel.swift only. CardRow.percentText now includes count; new CardRow.percentOnly feeds collapsed pills; merged Copilot chart passes window count through. CardView and MenuModel unchanged: Anvil says widths derive from measured percentText. Build passes, CoreChecks all pass. Not visually checked in running app. Commit 074aacc.
 
 ## Final summary
 (pending)
