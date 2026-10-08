@@ -47,7 +47,7 @@ T1-T5 done. Gauge PASS on all (T1, T2, T3, T4, T5). swift build and swift run Co
 - RESOLVED: PL decided premium match stays entitlement != 0 / unlimited false; chat and completions keep has_quota true. Code already matches the updated spec (uncommitted on main working tree). Floor copy of github-copilot.md still has the old line 21; Repo Lead/PL to carry the update, nobody edits specs here.
 - example/AGENTS.md not updated (see T5): Maestri-owned base format doc, data-source.md points to README for extensions. Needs human OK if wanted.
 - Lens note: Report.swift:98 resetsAt.from root uses root after map.root; spec wording ambiguous. No effect on Copilot (no map.root). PL may clarify.
-- Not visually checked in the running app (pill widths follow measured percentText).
+- RESOLVED (live render check by Gauge, modified copy of scripts/make-panel.swift built in the floor, light and dark PNGs read): '63% · 6280/10000 credits', '63% · 120/300' and overage '100% · 10320/10000 credits' fit inside the pill, no clipping, overflow, wrap or overlap with the row label or reset line. Collapsed card shows percent-only pills ('0%', '63%'). Cosmetic note only: in credits rows the pill left edge sits about 15px (at 2x) from the label, not touching. Cleanup done (build/ removed, no tracked file edited, docs/images/panel.png untouched).
 - Disk nearly full (2.7Gi free); scratch worktree builds fail.
 - Crew: Anvil (Coder), Gauge (Tester), Lens (Reviewer).
 - Spec edits: task brief says nobody edits specs/, so no repo-spec tasks.
