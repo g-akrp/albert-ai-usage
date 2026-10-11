@@ -1,0 +1,4 @@
+interface:
+  display_name: "Install AI Usage"
+  short_description: "Build and install AI Usage on this Windows device"
+  default_prompt: "Use $install-ai-usage to install the current AI Usage checkout on this device."
