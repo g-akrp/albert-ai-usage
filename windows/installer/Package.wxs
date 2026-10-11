@@ -1,0 +1,37 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="AI Usage" Manufacturer="g.akrp" Version="$(var.Version)" UpgradeCode="76C53F18-4899-4A86-B49C-459CB04819F7" Scope="perUser">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of AI Usage is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Property Id="AI_USAGE_EXISTING_STARTUP">
+      <RegistrySearch Id="ExistingStartup" Root="HKCU" Key="Software\Microsoft\Windows\CurrentVersion\Run" Name="AI Usage" Type="raw" />
+    </Property>
+    <StandardDirectory Id="PerUserProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="AI Usage">
+          <Component Id="Application">
+            <File Id="AIUsageExe" Source="$(var.Exe)" Name="ai-usage.exe" />
+            <RegistryValue Root="HKCU" Key="Software\g.akrp\AI Usage" Name="InstallPath" Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
+            <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />
+          </Component>
+          <Component Id="StartupRegistration" Condition="AI_USAGE_EXISTING_STARTUP">
+            <RegistryValue Root="HKCU" Key="Software\Microsoft\Windows\CurrentVersion\Run" Name="AI Usage" Type="string" Value="&quot;[INSTALLFOLDER]ai-usage.exe&quot;" KeyPath="yes" />
+          </Component>
+          <Component Id="StartupCleanup">
+            <RegistryValue Root="HKCU" Key="Software\g.akrp\AI Usage" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+            <RemoveRegistryValue Root="HKCU" Key="Software\Microsoft\Windows\CurrentVersion\Run" Name="AI Usage" Action="removeOnUninstall" />
+          </Component>
+        </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut">
+        <Shortcut Id="AIUsageShortcut" Name="AI Usage" Target="[#AIUsageExe]" WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue Root="HKCU" Key="Software\g.akrp\AI Usage" Name="Shortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+    <Feature Id="Main" Title="AI Usage">
+      <ComponentRef Id="Application" />
+      <ComponentRef Id="StartupRegistration" />
+      <ComponentRef Id="StartupCleanup" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+  </Package>
+</Wix>

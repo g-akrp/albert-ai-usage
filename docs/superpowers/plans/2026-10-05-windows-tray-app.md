@@ -1,6 +1,6 @@
 # Windows Tray App Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Status: superseded.** Use [the current approved Windows implementation plan](../../changes/windows-tray-app.md), updated on 2026-10-10 for the current macOS UI and WiX 7. The task details below are retained as historical planning notes, including their older WiX 5 assumptions; do not execute them as the current plan.
 
 **Goal:** A Windows 11 (x64, arm64) tray app, `ai-usage.exe`, that shows the same provider usage, pixel icon and card panel as the macOS menu bar app, in under 30 MB of memory.
 

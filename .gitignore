@@ -5,3 +5,5 @@ build/
 /.cocoindex_code/
 .claude/worktrees/
 .superpowers/
+/windows/target/
+/windows/dist/

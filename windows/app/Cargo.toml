@@ -1,0 +1,13 @@
+[package]
+name = "ai-usage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ai-usage-core = { path = "../core" }
+serde_json.workspace = true
+windows.workspace = true
+
+[build-dependencies]
+embed-resource = "=3.0.11"

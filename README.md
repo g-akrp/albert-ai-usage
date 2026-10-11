@@ -1,5 +1,13 @@
 # AI Usage
 
+## Windows preview
+
+The Windows implementation lives in `windows/`: native Rust/Win32 tray UI, Direct2D/DirectWrite rendering, shared JSON provider definitions, and a Windows Copilot adapter. Portable x64 and ARM64 builds are available locally in `windows/dist/`. Extract the matching ZIP and run `ai-usage.exe`; use `--demo` for fixture data with separate settings. Provider tools (`claude`, `codex`, `gh`, `agy`) must be installed and logged in through their own CLIs.
+
+Build from PowerShell with `windows/scripts/build.ps1 -Arch all`, then package with `windows/scripts/package.ps1 -Arch all -PortableOnly`. Settings live under `%APPDATA%\ai-usage`; launch-at-login is optional. Updates are manual: quit, replace the executable, restart. Builds are unsigned. ARM64 runtime, full DPI/keyboard/tray behavior, and release memory endurance validation remain pending. MSI work is deferred by user choice; WiX terms have not been accepted.
+
+See [Windows verification and distribution](docs/specs/windows/release.md).
+
 A small native macOS menu bar app that shows plan usage for AI coding agents: Claude Code, Codex, GitHub Copilot, and Antigravity. It replaces the Rust core and SwiftBar plugin that used to live in this repository (still in git history).
 
 - The menu bar icon is a two-row pixel label: the provider's short name in its brand color on top, its headline percent below (session limit, else weekly, else premium interactions, else the highest; the color follows the highest used percent) in green, orange (from 70%), or red (from 90%). A provider that fails shows a red `ERR`.

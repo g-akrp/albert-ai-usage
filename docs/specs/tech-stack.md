@@ -1,5 +1,11 @@
 # Tech stack
 
+## Windows
+
+The separate Windows implementation uses Rust, Win32, Direct2D, and DirectWrite. Runtime dependencies are `windows` and `serde_json`; `embed-resource` embeds the manifest, icons, and version resource at build time. MSVC builds target x64 and ARM64 with the static CRT. There is no cross-platform GUI framework or helper daemon. Portable ZIPs are the current distribution scope; WiX 7 MSI source is retained but unbuilt pending a future explicit decision. See [Windows release](windows/release.md) for verification limits.
+
+## macOS
+
 - **Language:** Swift 6 tools, Swift 5 language mode.
 - **UI:** AppKit only. No SwiftUI, no cross-platform GUI framework.
 - **Dependencies:** none. No third-party packages, no helper daemons.
