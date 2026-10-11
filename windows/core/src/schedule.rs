@@ -37,6 +37,27 @@ impl Schedule {
             e.refresh_requested = false;
         }
     }
+    pub fn running(&self, id: &str) -> bool {
+        self.entries.get(id).is_some_and(|e| e.running)
+    }
+    pub fn any_running(&self) -> bool {
+        self.entries.values().any(|e| e.running)
+    }
+    /// Seconds until the next automatic try of a provider whose last run failed.
+    pub fn retry_in(&self, id: &str, now: i64) -> Option<i64> {
+        self.entries
+            .get(id)
+            .filter(|e| e.failures > 0 && !e.running)
+            .map(|e| (e.due - now).max(0))
+    }
+    /// Runs one provider as soon as a worker is free.
+    pub fn retry(&mut self, id: &str) {
+        let e = self.entries.entry(id.into()).or_default();
+        e.due = 0;
+        if e.running {
+            e.refresh_requested = true;
+        }
+    }
     pub fn refresh(&mut self) {
         for e in self.entries.values_mut() {
             e.due = 0;

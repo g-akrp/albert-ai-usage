@@ -5,6 +5,7 @@ pub mod child_env;
 pub mod config;
 pub mod exe_lookup;
 pub mod json;
+pub mod motion;
 pub mod panel_layout;
 pub mod pixel_icon;
 pub mod process;

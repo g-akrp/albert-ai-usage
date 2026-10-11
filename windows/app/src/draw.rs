@@ -1,6 +1,6 @@
 use ai_usage_core::{
     card_model::Tone,
-    panel_layout::{BoxKind, Ink, Layout, Rect},
+    panel_layout::{BoxKind, Ink, Layout, Rect, Ring},
 };
 use windows::{
     core::w,
@@ -13,6 +13,21 @@ use windows::{
     },
 };
 
+/// What changes from frame to frame while the flyout animates.
+pub struct Frame<'a> {
+    /// Content opacity while the flyout opens, 0 to 1.
+    pub opacity: f32,
+    /// Accent strength of the "Updated" line after new results, 0 to 1.
+    pub glow: f32,
+    /// Spinner arc start angle in radians; `None` draws a still dot (reduced motion).
+    pub spin: Option<f32>,
+    /// The percent to draw for a ring, which may be mid-sweep.
+    pub ring: &'a dyn Fn(&Ring) -> Option<f64>,
+}
+fn blend(a: [u8; 3], b: [u8; 3], t: f32) -> [u8; 3] {
+    let t = t.clamp(0.0, 1.0);
+    [0, 1, 2].map(|i| (a[i] as f32 + (b[i] as f32 - a[i] as f32) * t).round() as u8)
+}
 fn color(rgb: [u8; 3], alpha: f32) -> D2D1_COLOR_F {
     D2D1_COLOR_F {
         r: rgb[0] as f32 / 255.0,
@@ -119,6 +134,7 @@ impl Painter {
         focused: Option<usize>,
         hovered: Option<usize>,
         dark: bool,
+        frame: &Frame,
     ) -> windows::core::Result<()> {
         unsafe {
             if self.target.is_none() {
@@ -238,7 +254,7 @@ impl Painter {
                     1.0,
                 ));
                 target.DrawEllipse(&ellipse, &brush, 5.0, None);
-                let Some(p) = ring.percent.filter(|p| *p > 0.0) else {
+                let Some(p) = (frame.ring)(ring).filter(|p| *p > 0.0) else {
                     continue;
                 };
                 let rgb = ring.color.map(|v| {
@@ -285,6 +301,62 @@ impl Painter {
                         &brush,
                     );
                 }
+            }
+            for spinner in &layout.spinners {
+                if spinner.y + spinner.h < scroll || spinner.y > scroll + viewport {
+                    continue;
+                }
+                let mut center = D2D1_ELLIPSE::default().point;
+                center.X = spinner.x + spinner.w / 2.0;
+                center.Y = spinner.y + spinner.h / 2.0 - scroll;
+                let r = spinner.w / 2.0 - 1.5;
+                let Some(angle) = frame.spin else {
+                    brush.SetColor(&color(accent, 1.0));
+                    target.FillEllipse(
+                        &D2D1_ELLIPSE {
+                            point: center,
+                            radiusX: 3.0,
+                            radiusY: 3.0,
+                        },
+                        &brush,
+                    );
+                    continue;
+                };
+                brush.SetColor(&color(muted, 0.25));
+                target.DrawEllipse(
+                    &D2D1_ELLIPSE {
+                        point: center,
+                        radiusX: r,
+                        radiusY: r,
+                    },
+                    &brush,
+                    2.0,
+                    None,
+                );
+                let mut start = center;
+                start.X += r * angle.cos();
+                start.Y += r * angle.sin();
+                let end_angle = angle + std::f32::consts::FRAC_PI_2;
+                let mut end = center;
+                end.X += r * end_angle.cos();
+                end.Y += r * end_angle.sin();
+                let path = self.factory.CreatePathGeometry()?;
+                let sink = path.Open()?;
+                sink.BeginFigure(start, D2D1_FIGURE_BEGIN_HOLLOW);
+                sink.AddArc(&D2D1_ARC_SEGMENT {
+                    point: end,
+                    size: D2D_SIZE_F {
+                        width: r,
+                        height: r,
+                    },
+                    rotationAngle: 0.0,
+                    sweepDirection: D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                    arcSize: D2D1_ARC_SIZE_SMALL,
+                });
+                sink.EndFigure(D2D1_FIGURE_END_OPEN);
+                sink.Close()?;
+                brush.SetColor(&color(accent, 1.0));
+                target.DrawGeometry(&path, &brush, 2.0, None);
             }
             for pill in &layout.pills {
                 if !pill.visibility.shown(hover)
@@ -343,16 +415,22 @@ impl Painter {
                     DWRITE_MEASURING_MODE_NATURAL,
                 );
             }
-            for t in &layout.texts {
+            for (index, t) in layout.texts.iter().enumerate() {
                 if !t.visibility.shown(hover)
                     || t.rect.y + t.rect.h < scroll
                     || t.rect.y > scroll + viewport
                 {
                     continue;
                 }
+                let glow = if layout.updated == Some(index) {
+                    frame.glow
+                } else {
+                    0.0
+                };
                 brush.SetColor(&color(
                     match t.ink {
                         Ink::Normal => fg,
+                        Ink::Muted if glow > 0.0 => blend(muted, accent, glow),
                         Ink::Muted => muted,
                         Ink::Accent => accent,
                         Ink::Error => {
@@ -401,6 +479,18 @@ impl Painter {
                     &brush,
                     1.0,
                     None,
+                );
+            }
+            if frame.opacity < 1.0 {
+                brush.SetColor(&color(panel, 1.0 - frame.opacity.clamp(0.0, 1.0)));
+                target.FillRectangle(
+                    &D2D_RECT_F {
+                        left: 0.0,
+                        top: 0.0,
+                        right: pixels.0 as f32 / scale,
+                        bottom: viewport,
+                    },
+                    &brush,
                 );
             }
             let result = target.EndDraw(None, None);

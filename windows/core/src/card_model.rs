@@ -62,6 +62,7 @@ pub struct Chart {
 #[derive(Clone, Debug)]
 pub struct Card {
     pub id: String,
+    pub config_id: String,
     pub title: String,
     pub account: Option<String>,
     pub color: [u8; 3],
@@ -75,6 +76,7 @@ impl Card {
     pub fn from_run(run: &Run) -> Self {
         let mut card = Self {
             id: run.id.clone(),
+            config_id: run.config_id.clone(),
             title: run.name.clone(),
             account: run.account.clone(),
             color: run.color,

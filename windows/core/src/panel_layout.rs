@@ -3,6 +3,16 @@ use crate::{
     relative_time,
     settings_model::Settings,
 };
+use std::collections::{HashMap, HashSet};
+
+/// Live provider state the panel reflects, keyed by provider (config) id.
+#[derive(Clone, Debug, Default)]
+pub struct Status {
+    /// Providers whose run is in progress.
+    pub busy: HashSet<String>,
+    /// Seconds until the next automatic try, for providers whose last run failed.
+    pub retry_in: HashMap<String, i64>,
+}
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Rect {
@@ -39,6 +49,8 @@ pub enum Action {
     Collapse(String),
     Move(String, isize),
     Refresh,
+    /// Runs one provider (config id) now.
+    Retry(String),
     Providers,
     Hidden,
     Login,
@@ -113,6 +125,8 @@ pub struct Pill {
 }
 #[derive(Clone, Debug)]
 pub struct Ring {
+    /// Stable per card, chart, and ring, so a ring can sweep from its last shown value.
+    pub key: String,
     pub rect: Rect,
     pub percent: Option<f64>,
     pub color: [u8; 3],
@@ -129,6 +143,10 @@ pub struct Layout {
     pub chevrons: Vec<Chevron>,
     pub hits: Vec<Hit>,
     pub cards: Vec<(String, Rect)>,
+    /// Activity indicators for providers that are running.
+    pub spinners: Vec<Rect>,
+    /// Index in `texts` of the "Updated …" line.
+    pub updated: Option<usize>,
 }
 impl Layout {
     fn text(
@@ -191,6 +209,7 @@ pub fn layout(
     cards: &[Card],
     settings: &Settings,
     errors: &[String],
+    status: &Status,
     updated: &str,
     version: &str,
     login: bool,
@@ -278,6 +297,15 @@ pub fn layout(
             if card.error { Ink::Error } else { Ink::Normal },
             Visibility::Always,
         );
+        let busy = status.busy.contains(&card.config_id);
+        if busy {
+            out.spinners.push(Rect {
+                x: title_rect.x + measure(&card.title, 13.0).min(title_rect.w) + 6.0,
+                y: title_rect.y + 4.0,
+                w: 14.0,
+                h: 14.0,
+            });
+        }
         out.hits.push(Hit {
             rect: title_rect,
             action: Action::Pin(card.title_pin.clone()),
@@ -385,11 +413,12 @@ pub fn layout(
             cy += 19.0;
         }
         if let Some(message) = &card.message {
+            let retry = card.error && !busy;
             out.text(
                 Rect {
                     x: 48.0,
                     y: cy + 5.0,
-                    w: width - 76.0,
+                    w: width - if retry { 140.0 } else { 76.0 },
                     h: 32.0,
                 },
                 message,
@@ -398,7 +427,42 @@ pub fn layout(
                 if card.error { Ink::Error } else { Ink::Muted },
                 Visibility::Always,
             );
+            if retry {
+                out.button(
+                    Rect {
+                        x: width - 80.0,
+                        y: cy + 5.0,
+                        w: 52.0,
+                        h: 24.0,
+                    },
+                    "Retry",
+                    Action::Retry(card.config_id.clone()),
+                    false,
+                    Visibility::Always,
+                    Some(&card.id),
+                );
+            }
             cy += 37.0;
+            if let Some(seconds) = status.retry_in.get(&card.config_id).filter(|_| retry) {
+                out.text(
+                    Rect {
+                        x: 48.0,
+                        y: cy,
+                        w: width - 76.0,
+                        h: 18.0,
+                    },
+                    if *seconds > 0 {
+                        format!("Retrying {}", relative_time::time_left(*seconds, 0))
+                    } else {
+                        "Retrying soon".into()
+                    },
+                    11.0,
+                    false,
+                    Ink::Muted,
+                    Visibility::Always,
+                );
+                cy += 20.0;
+            }
         }
         for notice in &card.notices {
             out.text(
@@ -421,7 +485,7 @@ pub fn layout(
             cy += 24.0;
         }
         if !collapsed {
-            for chart in &card.charts {
+            for (ci, chart) in card.charts.iter().enumerate() {
                 cy += 10.0;
                 let rows_height: f32 = chart
                     .windows
@@ -433,6 +497,7 @@ pub fn layout(
                 for (i, w) in chart.windows.iter().take(4).enumerate() {
                     let inset = i as f32 * 8.0;
                     out.rings.push(Ring {
+                        key: format!("{}#{ci}#{i}", card.id),
                         rect: Rect {
                             x: 32.0 + inset,
                             y: ring_top + inset,
@@ -685,20 +750,38 @@ pub fn layout(
         });
         *y += 29.0;
     };
-    menu("Refresh Now", Action::Refresh, false, &mut out, &mut y);
-    out.text(
-        Rect {
-            x: width - 77.0,
-            y: y - 24.0,
-            w: 52.0,
-            h: 20.0,
-        },
-        "Ctrl+R",
-        11.0,
-        false,
-        Ink::Muted,
-        Visibility::Always,
-    );
+    if status.busy.is_empty() {
+        menu("Refresh Now", Action::Refresh, false, &mut out, &mut y);
+        out.text(
+            Rect {
+                x: width - 77.0,
+                y: y - 24.0,
+                w: 52.0,
+                h: 20.0,
+            },
+            "Ctrl+R",
+            11.0,
+            false,
+            Ink::Muted,
+            Visibility::Always,
+        );
+    } else {
+        out.text(
+            Rect {
+                x: 28.0,
+                y: y + 5.0,
+                w: width - 56.0,
+                h: 22.0,
+            },
+            "Refreshing…",
+            12.0,
+            false,
+            Ink::Muted,
+            Visibility::Always,
+        );
+        y += 29.0;
+    }
+    out.updated = Some(out.texts.len());
     out.text(
         Rect {
             x: 28.0,

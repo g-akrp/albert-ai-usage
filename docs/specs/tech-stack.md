@@ -2,7 +2,7 @@
 
 ## Windows
 
-The separate Windows implementation uses Rust, Win32, Direct2D, and DirectWrite. Runtime dependencies are `windows` and `serde_json`; `embed-resource` embeds the manifest, icons, and version resource at build time. MSVC builds target x64 and ARM64 with the static CRT. There is no cross-platform GUI framework or helper daemon. Portable ZIPs are the current distribution scope; WiX 7 MSI source is retained but unbuilt pending a future explicit decision. See [Windows release](windows/release.md) for verification limits.
+The separate Windows implementation uses Rust, Win32, Direct2D, and DirectWrite. Runtime dependencies are `windows` and `serde_json`; `embed-resource` embeds the manifest, icons, and version resource at build time. MSVC builds target x64 and ARM64 with the static CRT. There is no cross-platform GUI framework or helper daemon. Portable ZIPs are the current distribution scope; WiX 7 MSI source is retained but unbuilt pending a future explicit decision. See [Windows release](windows/release.md) for verification limits. Timers: the 30 s schedule timer, and a 16 ms animation timer that runs only while the flyout is open and animating; with the flyout closed the app is idle.
 
 ## macOS
 

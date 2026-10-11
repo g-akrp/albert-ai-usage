@@ -28,3 +28,31 @@ fn manual_refresh_while_running_queues_one_followup() {
     assert!(s.reserve("claude", 1));
     assert!(!s.reserve("claude", 1));
 }
+
+#[test]
+fn running_and_retry_in_follow_failures() {
+    let mut s = Schedule::default();
+    assert!(!s.running("claude"));
+    assert!(!s.any_running());
+    assert!(s.reserve("claude", 0));
+    assert!(s.running("claude"));
+    assert!(s.any_running());
+    assert_eq!(s.retry_in("claude", 0), None);
+    s.finish("claude", 10, 300, false);
+    assert!(!s.running("claude"));
+    assert_eq!(s.retry_in("claude", 10), Some(60));
+    assert_eq!(s.retry_in("claude", 100), Some(0));
+    s.retry("claude");
+    assert!(s.reserve("claude", 11));
+    s.finish("claude", 12, 300, true);
+    assert_eq!(s.retry_in("claude", 12), None);
+}
+
+#[test]
+fn retry_while_running_queues_one_followup() {
+    let mut s = Schedule::default();
+    assert!(s.reserve("codex", 0));
+    s.retry("codex");
+    s.finish("codex", 1, 300, false);
+    assert!(s.reserve("codex", 1));
+}

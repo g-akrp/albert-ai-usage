@@ -33,6 +33,7 @@ fn claude_unavailable_usage_has_no_synthetic_percentage() {
             std::slice::from_ref(&card),
             &settings,
             &[],
+            &Default::default(),
             "",
             "0.1.0",
             false,

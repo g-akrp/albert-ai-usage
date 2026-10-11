@@ -7,7 +7,8 @@ use ai_usage_core::{
     card_model::{self, Card, Run},
     card_order,
     config::ProviderConfig,
-    panel_layout::{self, Action, Layout, Rect},
+    motion::{Motion, SLIDE_DIP},
+    panel_layout::{self, Action, Layout, Rect, Status},
     relative_time,
     report::{Count, Meter, Report, Window},
     runner::{self, Cancellation},
@@ -37,6 +38,9 @@ use windows::{
 
 const UPDATE: u32 = WM_APP + 1;
 const TRAY: u32 = WM_APP + 2;
+const SCHEDULE_TIMER: usize = 1;
+/// Runs only while the flyout is open and something moves; killed as soon as nothing does.
+const ANIMATION_TIMER: usize = 2;
 struct Completion {
     id: String,
     interval: u64,
@@ -67,6 +71,13 @@ struct App {
     updated: String,
     demo: bool,
     taskbar_message: u32,
+    motion: Motion,
+    animating: bool,
+    /// Final window position while open; the open slide offsets `y` by `slide` pixels.
+    place: (i32, i32),
+    slide: f32,
+    /// The slide offset the window currently has, in pixels.
+    offset: i32,
 }
 impl App {
     fn new(demo: bool) -> windows::core::Result<Self> {
@@ -107,6 +118,11 @@ impl App {
             updated: platform::format_time(relative_time::now()),
             demo,
             taskbar_message: 0,
+            motion: Motion::new(platform::reduced_motion()),
+            animating: false,
+            place: (0, 0),
+            slide: 0.0,
+            offset: 0,
         })
     }
     fn active_runs(&mut self) -> Vec<Run> {
@@ -148,6 +164,7 @@ impl App {
             &cards,
             &self.settings,
             &self.errors,
+            &self.status(),
             &self.updated,
             env!("CARGO_PKG_VERSION"),
             !self.demo && platform::login_enabled(),
@@ -157,6 +174,57 @@ impl App {
             platform::format_date,
         );
         self.scroll = self.scroll.min(self.max_scroll());
+    }
+    fn now_ms(&self) -> f64 {
+        self.created.elapsed().as_secs_f64() * 1000.0
+    }
+    fn status(&self) -> Status {
+        let now = self.created.elapsed().as_secs() as i64;
+        let mut status = Status::default();
+        for c in &self.configs {
+            if self.schedule.running(&c.id) {
+                status.busy.insert(c.id.clone());
+            }
+            if let Some(seconds) = self.schedule.retry_in(&c.id, now) {
+                status.retry_in.insert(c.id.clone(), seconds);
+            }
+        }
+        status
+    }
+    /// Advances the open slide and repaints; keeps the animation timer running exactly while
+    /// the open flyout has something moving.
+    fn animate(&mut self) {
+        let now = self.now_ms();
+        if self.visible {
+            let (x, y) = self.place;
+            let offset =
+                (self.slide * (1.0 - self.motion.open_progress(now) as f32)).round() as i32;
+            if offset != self.offset {
+                self.offset = offset;
+                unsafe {
+                    let _ = SetWindowPos(
+                        self.hwnd,
+                        None,
+                        x,
+                        y + offset,
+                        0,
+                        0,
+                        SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+                    );
+                }
+            }
+            self.repaint();
+        }
+        let spinning = self.schedule.any_running() && !platform::reduced_motion();
+        let needed = self.visible && (self.motion.active(now) || spinning);
+        unsafe {
+            if needed && !self.animating {
+                self.animating = SetTimer(Some(self.hwnd), ANIMATION_TIMER, 16, None) != 0;
+            } else if !needed && self.animating {
+                let _ = KillTimer(Some(self.hwnd), ANIMATION_TIMER);
+                self.animating = false;
+            }
+        }
     }
     fn work_area(&self, anchor: Rect) -> RECT {
         unsafe {
@@ -184,6 +252,11 @@ impl App {
         }
     }
     fn show(&mut self) {
+        let opening = !self.visible;
+        if opening {
+            self.motion.set_reduced(platform::reduced_motion());
+            self.motion.open(self.now_ms());
+        }
         unsafe {
             let anchor = self
                 .tray
@@ -204,11 +277,16 @@ impl App {
                     self.layout.width * self.scale,
                     self.layout.height * self.scale,
                 );
+                // Slide in from the taskbar side: upward when the flyout sits above the icon.
+                self.slide = SLIDE_DIP * self.scale * if pos.y < anchor.y { 1.0 } else { -1.0 };
+                self.place = (pos.x as i32, pos.y as i32);
+                self.offset = (self.slide * (1.0 - self.motion.open_progress(self.now_ms()) as f32))
+                    .round() as i32;
                 let _ = SetWindowPos(
                     self.hwnd,
                     Some(HWND_TOPMOST),
                     pos.x as i32,
-                    pos.y as i32,
+                    pos.y as i32 + self.offset,
                     pos.w.ceil() as i32,
                     pos.h.ceil() as i32,
                     SWP_NOACTIVATE | SWP_SHOWWINDOW,
@@ -222,16 +300,27 @@ impl App {
                 }
             }
             self.visible = true;
-            let _ = SetForegroundWindow(self.hwnd);
-            let _ = SetFocus(Some(self.hwnd));
-            self.repaint();
+            if opening {
+                let _ = SetForegroundWindow(self.hwnd);
+                let _ = SetFocus(Some(self.hwnd));
+            }
         }
+        let targets = self
+            .layout
+            .rings
+            .iter()
+            .map(|r| (r.key.clone(), r.percent))
+            .collect::<Vec<_>>();
+        self.motion.rings(&targets, self.now_ms());
+        self.repaint();
+        self.animate();
     }
     fn hide(&mut self) {
         unsafe {
             let _ = ShowWindow(self.hwnd, SW_HIDE);
         }
         self.visible = false;
+        self.animate();
         self.hover = None;
         self.hover_hit = None;
         self.focus = None;
@@ -266,12 +355,14 @@ impl App {
             return;
         }
         let now = self.created.elapsed().as_secs() as i64;
+        let mut started = false;
         for config in &self.configs {
             if self.settings.disabled.contains(&config.id)
                 || !self.schedule.reserve(&config.id, now)
             {
                 continue;
             }
+            started = true;
             let config = config.clone();
             let tx = self.tx.clone();
             let handle = self.hwnd.0 as usize;
@@ -295,6 +386,9 @@ impl App {
             }));
         }
         self.workers.retain(|w| !w.is_finished());
+        if started && self.visible {
+            self.show();
+        }
     }
     fn complete(&mut self) {
         while let Ok(result) = self.rx.try_recv() {
@@ -321,14 +415,17 @@ impl App {
                 self.runs.retain(|r| r.config_id != result.id);
                 self.runs.extend(result.runs);
                 self.updated = platform::format_time(relative_time::now());
+                if self.visible {
+                    self.motion.flash_updated(self.now_ms());
+                }
             }
         }
         self.icon(false);
         self.save();
+        self.tick();
         if self.visible {
             self.show();
         }
-        self.tick();
     }
     fn refresh(&mut self) {
         if self.demo {
@@ -353,20 +450,33 @@ impl App {
             self.show();
         }
     }
+    /// Re-lays out the open flyout in place, keeping keyboard focus on the same action.
+    fn update_in_place(&mut self, focused: Option<Action>) {
+        if !self.visible {
+            return;
+        }
+        self.show();
+        self.focus = focused.and_then(|a| self.layout.hits.iter().position(|h| h.action == a));
+        self.repaint();
+    }
     fn action(&mut self, action: Action) {
+        let focused = self
+            .focus
+            .and_then(|i| self.layout.hits.get(i))
+            .map(|h| h.action.clone());
         match action {
             Action::Pin(pin) => {
                 self.settings.pin = Some(pin);
-                self.hide();
                 self.icon(false);
+                self.update_in_place(focused);
             }
             Action::Hide(id) => {
                 Settings::toggle(&mut self.settings.hidden, &id);
-                self.hide();
+                self.update_in_place(focused);
             }
             Action::Collapse(id) => {
                 Settings::toggle(&mut self.settings.collapsed, &id);
-                self.hide();
+                self.update_in_place(focused);
             }
             Action::Move(id, step) => {
                 card_order::move_visible(
@@ -375,7 +485,12 @@ impl App {
                     step,
                     &self.settings.hidden,
                 );
-                self.hide();
+                self.update_in_place(focused);
+            }
+            Action::Retry(id) => {
+                self.schedule.retry(&id);
+                self.tick();
+                self.update_in_place(focused);
             }
             Action::Refresh => self.refresh(),
             Action::Providers => self.popup(1),
@@ -384,7 +499,7 @@ impl App {
                 if !self.demo && platform::set_login(!platform::login_enabled()).is_err() {
                     self.errors.push("Could not update Launch at Login".into());
                 }
-                self.hide();
+                self.update_in_place(focused);
             }
             Action::Folder => {
                 platform::open_folder(&self.folder.join("providers"));
@@ -614,7 +729,8 @@ unsafe extern "system" fn window_proc(
         return LRESULT(0);
     }
     if message == WM_DESTROY {
-        let _ = KillTimer(Some(hwnd), 1);
+        let _ = KillTimer(Some(hwnd), SCHEDULE_TIMER);
+        let _ = KillTimer(Some(hwnd), ANIMATION_TIMER);
         PostQuitMessage(0);
         return LRESULT(0);
     }
@@ -652,7 +768,15 @@ unsafe extern "system" fn window_proc(
             LRESULT(0)
         }
         WM_TIMER => {
-            app.tick();
+            if wparam.0 == ANIMATION_TIMER {
+                app.animate();
+            } else {
+                app.tick();
+                if app.visible {
+                    // Keeps "Retrying in ..." current while the flyout stays open.
+                    app.show();
+                }
+            }
             LRESULT(0)
         }
         WM_ERASEBKGND => LRESULT(1),
@@ -666,17 +790,31 @@ unsafe extern "system" fn window_proc(
             let scroll = app.scroll;
             let focus = app.focus;
             let hover_hit = app.hover_hit;
-            let _ = app.painter.paint(
-                hwnd,
-                pixels,
-                scale,
-                &layout,
-                scroll,
-                hover.as_deref(),
-                focus,
-                hover_hit,
-                platform::dark(),
-            );
+            let now = app.now_ms();
+            let motion = std::mem::take(&mut app.motion);
+            {
+                let ring = |r: &panel_layout::Ring| motion.ring_value(&r.key, now, r.percent);
+                let frame = draw::Frame {
+                    opacity: motion.open_progress(now) as f32,
+                    glow: motion.updated_glow(now) as f32,
+                    spin: (!platform::reduced_motion())
+                        .then(|| ((now / 800.0) % 1.0 * std::f64::consts::TAU) as f32),
+                    ring: &ring,
+                };
+                let _ = app.painter.paint(
+                    hwnd,
+                    pixels,
+                    scale,
+                    &layout,
+                    scroll,
+                    hover.as_deref(),
+                    focus,
+                    hover_hit,
+                    platform::dark(),
+                    &frame,
+                );
+            }
+            app.motion = motion;
             let _ = EndPaint(hwnd, &paint);
             LRESULT(0)
         }
@@ -936,7 +1074,7 @@ fn gui(demo: bool) -> windows::core::Result<()> {
                 app.show();
             }
         }
-        if SetTimer(Some(hwnd), 1, 30000, None) == 0 {
+        if SetTimer(Some(hwnd), SCHEDULE_TIMER, 30000, None) == 0 {
             let _ = DestroyWindow(hwnd);
             return Err(windows::core::Error::from_thread());
         }

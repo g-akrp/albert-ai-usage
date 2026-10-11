@@ -25,6 +25,20 @@ pub fn dark() -> bool {
         "AppsUseLightTheme",
     ) == Some(0)
 }
+/// True when Windows "Animation effects" is off (Settings › Accessibility › Visual effects).
+pub fn reduced_motion() -> bool {
+    let mut enabled = windows::core::BOOL(1);
+    unsafe {
+        SystemParametersInfoW(
+            SPI_GETCLIENTAREAANIMATION,
+            0,
+            Some((&mut enabled as *mut windows::core::BOOL).cast()),
+            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+        )
+        .is_ok()
+            && !enabled.as_bool()
+    }
+}
 fn dword(root: HKEY, key: &str, name: &str) -> Option<u32> {
     let k = wide(key);
     let n = wide(name);
