@@ -31,6 +31,7 @@ Color follows the highest used percent across all windows of the provider, not t
 
 - A provider that fails shows a red `ERR`.
 - A pinned provider with no usage data shows `--` in gray.
+- After **Refresh Now**, the icon fades to half opacity (0.2 s, instant with Reduce Motion) until every provider it started has finished. Scheduled runs do not dim it.
 - The accessibility text and tooltip name the provider, the limit when pinned, and the value, for example `Claude 10%` or `Antigravity Gemini Models 7%`.
 
 ## Pin

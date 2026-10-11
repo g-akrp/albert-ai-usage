@@ -209,7 +209,10 @@ func menuChecks() {
     check("resetTextToday", resetText(daysBefore: 0.1) == "Today, 12:16 PM")
     check("resetTextTomorrow", resetText(daysBefore: 1) == "Tomorrow, 12:16 PM")
     check("resetTextLater", resetText(daysBefore: 2) == "(Mon) Oct 5, 12:16 PM")
-    check("resetTextMidnight", MenuModel.resetText(resetAt, now: Date(timeIntervalSince1970: 1791158400 - 3600), timeZone: utcZone) == "Tomorrow, 12:16 PM")
+    check("updatedTextRefreshing", MenuModel.updatedText(resetAt, refreshing: true) { _ in "10:00" } == "Refreshing\u{2026}")
+    check("updatedTextTime", MenuModel.updatedText(resetAt, refreshing: false) { _ in "10:00" } == "Updated 10:00")
+    check("updatedTextNever", MenuModel.updatedText(nil, refreshing: false) { _ in "10:00" } == nil)
+    check("resetTextMidnight",MenuModel.resetText(resetAt, now: Date(timeIntervalSince1970: 1791158400 - 3600), timeZone: utcZone) == "Tomorrow, 12:16 PM")
 
     let codex = sampleRun("codex", "Codex", "CDX", .success(sampleReport(95)))
     let failed = sampleRun("copilot", "GitHub Copilot", "GHC", .failure(ProviderFailure("timed out")))

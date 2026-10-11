@@ -119,6 +119,13 @@ final class CardView: NSView {
         _ = render(draw: true)
     }
 
+    /// The menu replaces cards while open; a new card under the pointer starts hovered, so its buttons stay.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let window else { return }
+        cardHovered = bounds.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil))
+    }
+
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func updateTrackingAreas() {
@@ -169,7 +176,6 @@ final class CardView: NSView {
         let wasPressed = pressed
         setState(hovered: index, pressed: nil)
         guard let index, index == wasPressed else { return }
-        enclosingMenuItem?.menu?.cancelTracking()
         switch targets[index].kind {
         case .pin: onPin(targets[index].key)
         case .hide: onHide(targets[index].key)

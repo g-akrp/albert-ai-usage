@@ -19,6 +19,10 @@ final class StatusController: NSObject, NSMenuDelegate {
     /// Where card content starts, measured from the open menu: item text starts at 14 pt, or 22 pt when an
     /// item has a check mark (Launch at Login on) and macOS makes room for the check column. Cards follow.
     private var cardLeading: CGFloat = 14
+    private var menuOpen = false
+    private var menuRebuildPending = false
+    /// Set by Refresh Now until every provider it started has finished; the menu bar icon dims meanwhile.
+    private var manualRefresh = false
 
     /// Provider files that are switched off.
     private var disabled: Set<String> {
@@ -64,7 +68,7 @@ final class StatusController: NSObject, NSMenuDelegate {
         statusItem.menu = menu
         statusItem.button?.imagePosition = .imageOnly
         poller.disabled = disabled
-        poller.onChange = { [weak self] in self?.updateIcons() }
+        poller.onChange = { [weak self] in self?.pollerChanged() }
         updateIcons()
         poller.start()
 
@@ -90,13 +94,27 @@ final class StatusController: NSObject, NSMenuDelegate {
         }
     }
 
+    private func pollerChanged() {
+        if manualRefresh, !poller.isRunning { manualRefresh = false }
+        updateIcons()
+        rebuildOpenMenu()
+    }
+
     // MARK: Menu bar icon
 
     private func updateIcons() {
         let effective = Pin.effective(pinned, in: visibleRuns)
         if let effective, effective != pinned { pinned = effective }
+        guard let button = statusItem.button else { return }
+        let alpha: CGFloat = manualRefresh ? 0.5 : 1
+        if button.alphaValue != alpha {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.2
+                button.animator().alphaValue = alpha
+            }
+        }
         let spec = StatusIcons.icon(runs: visibleRuns, pinned: effective)
-        guard spec != icon, let button = statusItem.button else { return }
+        guard spec != icon else { return }
         icon = spec
         button.image = Self.image(spec)
         button.toolTip = spec.accessibility
@@ -127,13 +145,29 @@ final class StatusController: NSObject, NSMenuDelegate {
 
     // MARK: Menu
 
+    func menuWillOpen(_ menu: NSMenu) { menuOpen = true }
+    func menuDidClose(_ menu: NSMenu) { menuOpen = false }
+
+    /// Redraws the open menu so a card action or a finished run shows without reopening it. Waits for
+    /// the current event to end, since the card that was clicked is replaced.
+    private func rebuildOpenMenu() {
+        guard menuOpen, !menuRebuildPending else { return }
+        menuRebuildPending = true
+        RunLoop.main.perform(inModes: [.common]) { [weak self] in
+            guard let self else { return }
+            menuRebuildPending = false
+            if menuOpen { menuNeedsUpdate(menu) }
+        }
+    }
+
     func menuNeedsUpdate(_ menu: NSMenu) {
         let entries = MenuModel.entries(
             runs: visibleRuns, pinned: pinned, configErrors: poller.configErrors,
             providers: poller.providerNames.map {
                 ProviderToggle(id: $0.id, name: $0.name, enabled: !poller.disabled.contains($0.id))
             },
-            updated: poller.lastUpdate.map { "Updated \(timeFormatter.string(from: $0))" },
+            updated: MenuModel.updatedText(poller.lastUpdate, refreshing: poller.isRunning,
+                                           formatTime: timeFormatter.string(from:)),
             launchAtLogin: SMAppService.mainApp.status == .enabled,
             version: AppVersion.current, hidden: hiddenCards, order: cardOrder, formatReset: { MenuModel.resetText($0, now: Date()) })
         cardLeading = SMAppService.mainApp.status == .enabled ? 22 : 14
@@ -160,14 +194,18 @@ final class StatusController: NSObject, NSMenuDelegate {
                                  canMoveDown: position.index < position.count - 1, onPin: { [weak self] key in
                 self?.pinned = key
                 self?.updateIcons()
+                self?.rebuildOpenMenu()
             }, onHide: { [weak self] id in
                 self?.hiddenCards.insert(id)
+                self?.rebuildOpenMenu()
             }, onMove: { [weak self] id, step in
                 self?.moveCard(id, by: step)
+                self?.rebuildOpenMenu()
             }, onToggle: { [weak self] id in
                 guard var set = self?.collapsedCards else { return }
                 if set.contains(id) { set.remove(id) } else { set.insert(id) }
                 self?.collapsedCards = set
+                self?.rebuildOpenMenu()
             })
             return item
         case .detail(let text, let tone):
@@ -272,6 +310,8 @@ final class StatusController: NSObject, NSMenuDelegate {
 
     @objc private func refresh() {
         poller.refreshNow()
+        manualRefresh = poller.isRunning
+        updateIcons()
     }
 
     @objc private func toggleLaunchAtLogin() {

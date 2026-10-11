@@ -15,6 +15,8 @@ final class Poller {
     }
     private(set) var configErrors: [String] = []
     private(set) var lastUpdate: Date?
+    /// Whether any provider is running now.
+    var isRunning: Bool { states.values.contains { $0.running } }
     var onChange: (() -> Void)?
 
     private struct State {
@@ -70,14 +72,17 @@ final class Poller {
     func tick() {
         guard let runner else { return }
         let now = Date()
+        var started = false
         for id in order where !disabled.contains(id) {
             guard let state = states[id], !state.running, state.next <= now, let config = configs[id] else { continue }
             states[id]?.running = true
+            started = true
             queue.addOperation { [weak self] in
                 let results = runner.runAll(config)
                 DispatchQueue.main.async { self?.finish(config, results) }
             }
         }
+        if started { onChange?() }
     }
 
     /// Replaces the provider's runs (one per account) in place.
