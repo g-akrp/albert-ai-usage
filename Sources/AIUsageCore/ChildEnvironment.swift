@@ -3,7 +3,7 @@ import Foundation
 /// The minimal environment providers run with, and the PATH used to find their executables.
 ///
 /// An app opened from Finder gets launchd's bare PATH, so the PATH and proxy settings come from
-/// the login shell (read once at launch), plus common install folders. `GITHUB_TOKEN` and
+/// the login shell (read at launch and on Refresh Now), plus common install folders. `GITHUB_TOKEN` and
 /// `GH_TOKEN` are never passed: a stale one shadows a working `gh` login.
 public struct ChildEnvironment {
     public let searchPath: [String]
@@ -12,6 +12,9 @@ public struct ChildEnvironment {
 
     static let passedKeys = [
         "USER", "LOGNAME", "LANG", "LC_ALL", "TMPDIR", "SHELL", "SSH_AUTH_SOCK", "__CF_USER_TEXT_ENCODING",
+    ]
+    /// Taken only from the login shell when it was read, so a proxy removed there is dropped too.
+    static let proxyKeys = [
         "HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "NO_PROXY", "no_proxy", "ALL_PROXY", "all_proxy",
     ]
 
@@ -21,6 +24,7 @@ public struct ChildEnvironment {
     }
 
     /// `process` is this app's environment; `loginShell` is what the login shell printed, if anything.
+    /// Proxy keys come from `loginShell` alone when it was read; other keys prefer `process`.
     public init(process: [String: String], loginShell: [String: String]?, home: String) {
         self.home = home
         var seen = Set<String>(), path: [String] = []
@@ -36,6 +40,9 @@ public struct ChildEnvironment {
         var base = ["PATH": path.joined(separator: ":"), "HOME": home, "TERM": "dumb", "NO_COLOR": "1"]
         for key in Self.passedKeys {
             if let value = process[key] ?? loginShell?[key] { base[key] = value }
+        }
+        for key in Self.proxyKeys {
+            if let value = loginShell == nil ? process[key] : loginShell?[key] { base[key] = value }
         }
         base["LANG"] = base["LANG"] ?? "en_US.UTF-8"
         self.base = base

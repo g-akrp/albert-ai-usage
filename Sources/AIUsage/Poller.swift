@@ -30,6 +30,8 @@ final class Poller {
     private var configs: [String: ProviderConfig] = [:]
     private var states: [String: State] = [:]
     private var runner: ProviderRunner?
+    /// Main thread only: a login-shell read is already in flight.
+    private var reloadingEnvironment = false
     private var timer: Timer?
     private let queue: OperationQueue = {
         let queue = OperationQueue()
@@ -44,28 +46,36 @@ final class Poller {
 
     func start() {
         reloadConfigs()
-        // Reading the login shell takes a moment, so it happens once, off the main thread.
-        DispatchQueue.global(qos: .utility).async {
-            let environment = ChildEnvironment(
-                process: ProcessInfo.processInfo.environment,
-                loginShell: ChildEnvironment.readLoginShell(shell: Self.loginShell()),
-                home: NSHomeDirectory())
-            DispatchQueue.main.async {
-                self.runner = ProviderRunner(environment: environment)
-                self.tick()
-            }
-        }
+        reloadEnvironment()
         let timer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in self?.tick() }
         timer.tolerance = 10
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
     }
 
-    /// Rereads the provider files and runs every provider that is not already running.
+    /// Rereads the provider files and the login shell, then runs every provider that is not already running.
     func refreshNow() {
         reloadConfigs()
         for id in states.keys { states[id]?.next = .distantPast }
-        tick()
+        reloadEnvironment()
+    }
+
+    /// Reads the login shell off the main thread, then swaps in a runner with that environment and ticks.
+    private func reloadEnvironment() {
+        guard !reloadingEnvironment else { return }
+        reloadingEnvironment = true
+        // Reading the login shell takes a moment, so it happens off the main thread.
+        DispatchQueue.global(qos: .utility).async {
+            let environment = ChildEnvironment(
+                process: ProcessInfo.processInfo.environment,
+                loginShell: ChildEnvironment.readLoginShell(shell: Self.loginShell()),
+                home: NSHomeDirectory())
+            DispatchQueue.main.async {
+                self.reloadingEnvironment = false
+                self.runner = ProviderRunner(environment: environment)
+                self.tick()
+            }
+        }
     }
 
     /// Starts every provider that is due.

@@ -11,6 +11,14 @@ func environmentChecks() {
     check("pathHasCommonFolders", env.searchPath.contains("/usr/local/bin") && env.searchPath.contains("/Users/me/bin"))
     check("envDropsTokens", env.base["GITHUB_TOKEN"] == nil && env.base["GH_TOKEN"] == nil)
     check("envProxyFromLoginShell", env.base["https_proxy"] == "http://proxy:8080")
+    let proxyShellWins = ChildEnvironment(process: ["https_proxy": "http://old:1"],
+        loginShell: ["https_proxy": "http://new:2"], home: "/Users/me")
+    check("proxyLoginShellWins", proxyShellWins.base["https_proxy"] == "http://new:2")
+    let proxyRemoved = ChildEnvironment(process: ["https_proxy": "http://old:1"],
+        loginShell: ["PATH": "/usr/bin"], home: "/Users/me")
+    check("proxyRemovedInShellDropped", proxyRemoved.base["https_proxy"] == nil)
+    let proxyNoShell = ChildEnvironment(process: ["https_proxy": "http://old:1"], loginShell: nil, home: "/Users/me")
+    check("proxyProcessWithoutShell", proxyNoShell.base["https_proxy"] == "http://old:1")
     check("envProcessWins", env.base["USER"] == "me" && env.base["TMPDIR"] == "/tmp/a/")
     check("envFixed", env.base["TERM"] == "dumb" && env.base["NO_COLOR"] == "1" && env.base["LANG"] == "en_US.UTF-8"
         && env.base["HOME"] == "/Users/me")
