@@ -34,6 +34,8 @@ final class StatusController: NSObject {
             self?.refreshPanel()
         }, row: { [weak self] in self?.rowClicked($0) }))
         panel.onClose = { [weak self] in
+            self?.countdown?.invalidate()
+            self?.countdown = nil
             self?.expandedSections = []
             self?.statusItem.button?.highlight(false)
         }
@@ -41,6 +43,8 @@ final class StatusController: NSObject {
     }()
     /// Set by Refresh Now until every provider it started has finished; the menu bar icon dims meanwhile.
     private var manualRefresh = false
+    /// Ticks each second while the panel is open, to run the refresh countdown.
+    private var countdown: Timer?
 
     /// Provider files that are switched off.
     private var disabled: Set<String> {
@@ -173,7 +177,14 @@ final class StatusController: NSObject {
     @objc private func togglePanel() {
         guard let button = statusItem.button else { return }
         if panel.isOpen { return panel.close() }
+        if panel.justClosed { return }
         panel.open(under: button, content: content())
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self, let row = self.content().rows.first(where: { $0.kind == .updated }) else { return }
+            self.panel.refreshUpdated(row)
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        countdown = timer
         // The button drops its highlight when this click ends; set it after that.
         DispatchQueue.main.async { [weak self] in button.highlight(self?.panel.isOpen == true) }
     }
@@ -185,6 +196,7 @@ final class StatusController: NSObject {
                 ProviderToggle(id: $0.id, name: $0.name, enabled: !poller.disabled.contains($0.id))
             },
             updated: MenuModel.updatedText(poller.lastUpdate, refreshing: poller.isRunning,
+                                           next: poller.nextRefresh.flatMap { RelativeTime.countdown(until: $0, now: Date()) },
                                            formatTime: timeFormatter.string(from:)),
             launchAtLogin: SMAppService.mainApp.status == .enabled,
             version: AppVersion.current, hidden: hiddenCards, order: cardOrder, refreshSeconds: refreshSeconds, formatReset: { MenuModel.resetText($0, now: Date()) })

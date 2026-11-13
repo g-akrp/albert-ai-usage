@@ -30,12 +30,9 @@ final class CardView: NSView {
     private static let titleFont = NSFont.menuFont(ofSize: 13), boldTitleFont = NSFont.boldSystemFont(ofSize: 13)
     private static let bodyFont = NSFont.menuFont(ofSize: 12), smallFont = NSFont.menuFont(ofSize: 11)
     private static let groupFont = NSFont.boldSystemFont(ofSize: 12)
-    /// The text button that hides a card: "Hide" in an outlined box.
-    private static let hideLabel = NSAttributedString(string: "Hide", attributes: [.font: NSFont.menuFont(ofSize: 11)])
-    private static let hideWidth = ceil(hideLabel.size().width) + 16
-    /// The text button that pins: "Pin", or "Pinned" (always shown) for the current pin. Same width for both.
+    /// The icon buttons that hide and pin are `box` wide; the current pin always shows filled.
     private static let pinFont = NSFont.menuFont(ofSize: 11)
-    private static let pinWidth = ceil(NSAttributedString(string: "Pinned", attributes: [.font: pinFont]).size().width) + 16
+    private static let hideWidth = box, pinWidth = box
     /// The two arrow buttons that reorder a card sit left of Hide, each `box` wide, 4 pt apart.
     private static let moveSpace = 2 * (box + 4)
     /// The collapse chevron's column, left of the title.
@@ -91,7 +88,7 @@ final class CardView: NSView {
                 for row in chart.rows {
                     widest = max(widest, columnX + dotColumn + size(row.label, bodyFont) + large
                                  + size(row.percentText, bodyFont) + 2 * pillPadding + (row.pin == nil ? 0 : pinSpace) + leading)
-                    for line in [row.count, row.reset].compactMap({ $0 }) {
+                    for line in detailLines(row) {
                         widest = max(widest, columnX + dotColumn + size(line, smallFont) + leading)
                     }
                 }
@@ -192,8 +189,8 @@ final class CardView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let outline = NSBezierPath(roundedRect: bounds.insetBy(dx: Self.sideGap + 0.5, dy: Self.outerGap + 0.5), xRadius: 10, yRadius: 10)
         outline.lineWidth = 1
-        (NSColor.separatorColor.blended(withFraction: hover, of: .tertiaryLabelColor)
-            ?? (cardHovered ? .tertiaryLabelColor : .separatorColor)).setStroke()
+        (NSColor.tertiaryLabelColor.blended(withFraction: hover, of: .secondaryLabelColor)
+            ?? (cardHovered ? .secondaryLabelColor : .tertiaryLabelColor)).setStroke()
         outline.stroke()
         _ = render(draw: true)
     }
@@ -388,7 +385,12 @@ final class CardView: NSView {
 
     /// A row's height plus the gap below it.
     private static func rowHeight(_ row: CardRow) -> CGFloat {
-        line + CGFloat([row.count, row.reset].compactMap { $0 }.count) * resetLine + medium
+        line + CGFloat(detailLines(row).count) * resetLine + medium
+    }
+
+    /// The small gray lines under a row: the count, then the reset date and the time left on two lines.
+    private static func detailLines(_ row: CardRow) -> [String] {
+        [row.count].compactMap { $0 } + (row.reset?.components(separatedBy: " \u{00B7} ") ?? [])
     }
 
     /// Dot in the ring's color, label, then the value on a tinted background at the right; under the
@@ -417,7 +419,7 @@ final class CardView: NSView {
             pin(row.pinned, key: key, label: row.label, at: NSPoint(x: right - Self.pinWidth, y: y + (Self.line - Self.box) / 2),
                 hit: NSRect(x: x, y: y, width: right - x, height: Self.line), draw: draw)
         }
-        for (index, line) in [row.count, row.reset].compactMap({ $0 }).enumerated() {
+        for (index, line) in Self.detailLines(row).enumerated() {
             text(line, font: Self.smallFont, color: .secondaryLabelColor,
                  at: NSPoint(x: x + Self.dotColumn, y: y + Self.line + CGFloat(index) * Self.resetLine), height: Self.resetLine, draw: draw)
         }
@@ -429,7 +431,7 @@ final class CardView: NSView {
         let fractions = shownFractions[chartIndex]
         for index in chart.rings.indices {
             let radius = box.width / 2 - Self.thickness / 2 - CGFloat(index) * (Self.thickness + Self.gap)
-            Self.arc(center: center, radius: radius, fraction: 1, color: .separatorColor)
+            Self.arc(center: center, radius: radius, fraction: 1, color: NSColor.labelColor.withAlphaComponent(0.22))
             if let fraction = fractions[index], fraction > 0 {
                 Self.arc(center: center, radius: radius, fraction: fraction, color: shade(index))
             }
@@ -491,26 +493,25 @@ final class CardView: NSView {
 
     /// Records the click area; draws an outlined text button that reacts to hover and press.
     private func button(_ kind: PinTarget.Kind, key: String, label: String, at origin: NSPoint, hit: NSRect, draw: Bool) {
-        var pinned = false, width = Self.hideWidth, title = Self.hideLabel
+        var pinned = false, symbol: String? = "eye.slash", title = NSAttributedString()
         if case .pin(let value) = kind {
-            (pinned, width) = (value, Self.pinWidth)
-            title = NSAttributedString(string: value ? "Pinned" : "Pin", attributes: [.font: Self.pinFont])
+            (pinned, symbol) = (value, value ? "pin.fill" : "pin")
         } else if case .move(let step) = kind {
-            width = Self.box
+            symbol = nil
             title = NSAttributedString(string: step < 0 ? "\u{2191}" : "\u{2193}", attributes: [.font: Self.pinFont])
         }
-        let box = NSRect(origin: origin, size: NSSize(width: width, height: Self.box))
+        let box = NSRect(origin: origin, size: NSSize(width: Self.box, height: Self.box))
         let index = targets.count
         targets.append(PinTarget(rect: hit, box: box, key: key, label: label, kind: kind))
         let isPressed = pressed == index, isHovered = hovered == index
         guard draw, hover > 0 || pinned else { return }
         guard pinned || hover == 1 else {
-            return faded(hover) { paint(box, title, pinned: pinned, isHovered: isHovered, isPressed: isPressed) }
+            return faded(hover) { paint(box, symbol, title, pinned: pinned, isHovered: isHovered, isPressed: isPressed) }
         }
-        paint(box, title, pinned: pinned, isHovered: isHovered, isPressed: isPressed)
+        paint(box, symbol, title, pinned: pinned, isHovered: isHovered, isPressed: isPressed)
     }
 
-    private func paint(_ box: NSRect, _ title: NSAttributedString, pinned: Bool, isHovered: Bool, isPressed: Bool) {
+    private func paint(_ box: NSRect, _ symbol: String?, _ title: NSAttributedString, pinned: Bool, isHovered: Bool, isPressed: Bool) {
         let shape = NSBezierPath(roundedRect: box.insetBy(dx: 0.5, dy: 0.5), xRadius: 5, yRadius: 5)
         if isPressed || isHovered {
             NSColor.labelColor.withAlphaComponent(isPressed ? 0.2 : 0.08).setFill()
@@ -520,12 +521,29 @@ final class CardView: NSView {
         outline.setStroke()
         shape.lineWidth = 1
         shape.stroke()
+        let color: NSColor = pinned ? .controlAccentColor : isHovered || isPressed ? .labelColor : .secondaryLabelColor
+        if let symbol, let image = Self.icon(symbol, color) {
+            let size = image.size
+            image.draw(in: NSRect(x: box.midX - size.width / 2, y: box.midY - size.height / 2, width: size.width, height: size.height),
+                       from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            return
+        }
         let text = NSMutableAttributedString(attributedString: title)
-        text.addAttribute(.foregroundColor,
-                          value: pinned ? NSColor.controlAccentColor : isHovered || isPressed ? NSColor.labelColor : NSColor.secondaryLabelColor,
-                          range: NSRange(location: 0, length: text.length))
+        text.addAttribute(.foregroundColor, value: color, range: NSRange(location: 0, length: text.length))
         let size = text.size()
         text.draw(at: NSPoint(x: box.midX - size.width / 2, y: box.midY - size.height / 2))
+    }
+
+    /// The SF Symbol `name` filled with `color`.
+    private static func icon(_ name: String, _ color: NSColor) -> NSImage? {
+        guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 10, weight: .medium)) else { return nil }
+        return NSImage(size: symbol.size, flipped: false) { rect in
+            symbol.draw(in: rect)
+            color.set()
+            rect.fill(using: .sourceIn)
+            return true
+        }
     }
 
     /// Text on a tinted pill: system green is too light on a light background, so light mode gets a darker green.

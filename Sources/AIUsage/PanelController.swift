@@ -60,6 +60,9 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var monitors: [Any] = []
 
     private(set) var isOpen = false
+    /// When the panel last closed; a click on the icon right after must not open it again.
+    private var closedAt: TimeInterval = 0
+    var justClosed: Bool { ProcessInfo.processInfo.systemUptime - closedAt < 0.3 }
     var onClose: (() -> Void)?
 
     init(actions: PanelActions) {
@@ -116,7 +119,11 @@ final class PanelController: NSObject, NSWindowDelegate {
         // A click anywhere else closes the panel. The icon's own click is left to its action, which toggles.
         let clicks: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
         monitors = [
-            NSEvent.addGlobalMonitorForEvents(matching: clicks) { [weak self] _ in self?.close() },
+            NSEvent.addGlobalMonitorForEvents(matching: clicks) { [weak self] _ in
+                guard let self, let frame = self.button.flatMap({ $0.window?.convertToScreen($0.convert($0.bounds, to: nil)) }),
+                      !frame.contains(NSEvent.mouseLocation) else { return }
+                self.close()
+            },
             NSEvent.addLocalMonitorForEvents(matching: clicks) { [weak self] event in
                 if let self, event.window !== self.panel, event.window !== self.button?.window { self.close() }
                 return event
@@ -127,6 +134,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     func close() {
         guard isOpen, let closing = panel else { return }
         isOpen = false
+        closedAt = ProcessInfo.processInfo.systemUptime
         monitors.forEach(NSEvent.removeMonitor)
         monitors = []
         generation += 1
@@ -240,6 +248,11 @@ final class PanelController: NSObject, NSWindowDelegate {
         } else {
             Motion.animate(0.15, { leaving.forEach { $0.animator().alphaValue = 0 } }, completion: slide)
         }
+    }
+
+    /// Shows a changed Updated row without a full update, so a ticking countdown does not interrupt animations.
+    func refreshUpdated(_ row: PanelRow) {
+        rowViews.first { $0.row.kind == .updated }?.update(row)
     }
 
     // MARK: Keyboard

@@ -76,7 +76,7 @@ final class RowView: NSView {
     func update(_ row: PanelRow) {
         guard row != self.row else { return }
         self.row = row
-        Motion.fade(self, 0.12)
+        if row.kind != .updated { Motion.fade(self, 0.12) }
         needsDisplay = true
         describe()
         spin()

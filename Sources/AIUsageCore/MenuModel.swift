@@ -78,9 +78,10 @@ public enum MenuModel {
     }
 
     /// The line under Refresh Now: "Refreshing…" while a provider runs, else when the last run finished.
-    public static func updatedText(_ lastUpdate: Date?, refreshing: Bool, formatTime: (Date) -> String) -> String? {
+    public static func updatedText(_ lastUpdate: Date?, refreshing: Bool, next: String? = nil,
+                                   formatTime: (Date) -> String) -> String? {
         if refreshing { return "Refreshing\u{2026}" }
-        return lastUpdate.map { "Updated \(formatTime($0))" }
+        return lastUpdate.map { "Updated \(formatTime($0))" + (next.map { " \u{00B7} Next \($0)" } ?? "") }
     }
 
     /// Readable local time with weekday, for example "(Sat) Oct 14, 10:31 AM".

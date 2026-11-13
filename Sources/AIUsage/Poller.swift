@@ -27,6 +27,14 @@ final class Poller {
     /// Whether any provider is running now.
     var isRunning: Bool { states.values.contains { $0.running } }
     var onChange: (() -> Void)?
+    /// When the next provider run is due; `nil` while one is running or nothing is scheduled.
+    var nextRefresh: Date? {
+        guard !isRunning else { return nil }
+        return order.compactMap { id -> Date? in
+            guard !disabled.contains(id), let state = states[id] else { return nil }
+            return state.started + Schedule.delay(interval: interval, failures: state.failures)
+        }.min()
+    }
 
     private struct State {
         var started = Date.distantPast

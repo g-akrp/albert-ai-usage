@@ -211,6 +211,10 @@ func menuChecks() {
     check("resetTextLater", resetText(daysBefore: 2) == "(Mon) Oct 5, 12:16 PM")
     check("updatedTextRefreshing", MenuModel.updatedText(resetAt, refreshing: true) { _ in "10:00" } == "Refreshing\u{2026}")
     check("updatedTextTime", MenuModel.updatedText(resetAt, refreshing: false) { _ in "10:00" } == "Updated 10:00")
+    check("updatedTextNext", MenuModel.updatedText(resetAt, refreshing: false, next: "4:32") { _ in "10:00" } == "Updated 10:00 \u{00B7} Next 4:32")
+    check("countdown", RelativeTime.countdown(until: resetAt.addingTimeInterval(272), now: resetAt) == "4:32")
+    check("countdownSeconds", RelativeTime.countdown(until: resetAt.addingTimeInterval(5), now: resetAt) == "0:05")
+    check("countdownPast", RelativeTime.countdown(until: resetAt, now: resetAt) == nil)
     check("updatedTextNever", MenuModel.updatedText(nil, refreshing: false) { _ in "10:00" } == nil)
     check("resetTextMidnight",MenuModel.resetText(resetAt, now: Date(timeIntervalSince1970: 1791158400 - 3600), timeZone: utcZone) == "Tomorrow, 12:16 PM")
 
