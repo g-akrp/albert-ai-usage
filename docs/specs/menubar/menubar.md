@@ -7,6 +7,6 @@ AI Usage is a menu bar app with no Dock icon. It has two parts:
 
 Data comes from the providers described in [data source](../data-source/data-source.md).
 
-The app is AppKit only, with no third-party packages. Its physical memory footprint is about 11 MB and must stay under 30 MB. The only timer is the 30 s schedule timer.
+The app is AppKit only, with no third-party packages. Its physical memory footprint is about 11 MB and must stay under 30 MB. The only timer is the schedule timer (30 s; 10 s while Refresh Every is 10 s or 30 s).
 
 Requires macOS 13 or later.

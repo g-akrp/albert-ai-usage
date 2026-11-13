@@ -91,7 +91,9 @@ final class CardView: NSView {
                 for row in chart.rows {
                     widest = max(widest, columnX + dotColumn + size(row.label, bodyFont) + large
                                  + size(row.percentText, bodyFont) + 2 * pillPadding + (row.pin == nil ? 0 : pinSpace) + leading)
-                    if let reset = row.reset { widest = max(widest, columnX + dotColumn + size(reset, smallFont) + leading) }
+                    for line in [row.count, row.reset].compactMap({ $0 }) {
+                        widest = max(widest, columnX + dotColumn + size(line, smallFont) + leading)
+                    }
                 }
             }
             for row in card.overflow {
@@ -386,10 +388,11 @@ final class CardView: NSView {
 
     /// A row's height plus the gap below it.
     private static func rowHeight(_ row: CardRow) -> CGFloat {
-        line + (row.reset == nil ? 0 : resetLine) + medium
+        line + CGFloat([row.count, row.reset].compactMap { $0 }.count) * resetLine + medium
     }
 
-    /// Dot in the ring's color, label, then the value on a tinted background at the right.
+    /// Dot in the ring's color, label, then the value on a tinted background at the right; under the
+    /// label, in small gray text, the count and the reset time when the row has them.
     private func drawRow(_ row: CardRow, chart: Int, index: Int, x: CGFloat, right: CGFloat, y: CGFloat, draw: Bool) {
         let old: (Card) -> CardRow? = { card in
             guard card.charts.indices.contains(chart), card.charts[chart].rows.indices.contains(index) else { return nil }
@@ -414,9 +417,9 @@ final class CardView: NSView {
             pin(row.pinned, key: key, label: row.label, at: NSPoint(x: right - Self.pinWidth, y: y + (Self.line - Self.box) / 2),
                 hit: NSRect(x: x, y: y, width: right - x, height: Self.line), draw: draw)
         }
-        if let reset = row.reset {
-            text(reset, font: Self.smallFont, color: .secondaryLabelColor, at: NSPoint(x: x + Self.dotColumn, y: y + Self.line),
-                 height: Self.resetLine, draw: draw)
+        for (index, line) in [row.count, row.reset].compactMap({ $0 }).enumerated() {
+            text(line, font: Self.smallFont, color: .secondaryLabelColor,
+                 at: NSPoint(x: x + Self.dotColumn, y: y + Self.line + CGFloat(index) * Self.resetLine), height: Self.resetLine, draw: draw)
         }
     }
 

@@ -20,4 +20,4 @@
 ## Limits
 
 - Physical memory footprint about 11 MB, must stay under 30 MB.
-- Only timer: the 30 s schedule timer. No other polling.
+- Only timer: the schedule timer (every 30 s; every 10 s while Refresh Every is 10 s or 30 s). No other polling.

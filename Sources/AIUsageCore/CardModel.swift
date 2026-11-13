@@ -10,11 +10,11 @@ public struct CardRing: Equatable {
 
 public struct CardRow: Equatable {
     public let label: String
-    /// The row's pill: the percent, then ` \u{00B7} used/limit[ unit]` when the window has a count.
+    /// The row's pill: the percent.
     public let percentText: String
-    /// Just the percent, for a collapsed card's pills.
-    public let percentOnly: String
     public let tone: Tone
+    /// `used/limit[ unit]` under the label, such as `6280/10000 credits`; `nil` when the window has no count.
+    public let count: String?
     /// `Oct 5, 3:20 PM · in 2 minutes`, `resetting…`, or `nil` without a reset time.
     public let reset: String?
     /// The ring this row belongs to; `nil` for rows past the fourth ring.
@@ -84,7 +84,7 @@ extension Card {
     /// with several groups, each group's headline percent in the worst tone of its rings.
     public var pills: [CardPill] {
         if charts.count == 1 {
-            return charts[0].rows.prefix(Card.maxPills).map { CardPill(text: $0.percentOnly, tone: $0.tone) }
+            return charts[0].rows.prefix(Card.maxPills).map { CardPill(text: $0.percentText, tone: $0.tone) }
         }
         return charts.prefix(Card.maxPills).map { chart in
             CardPill(text: chart.center, tone: chart.rings.map(\.tone).max { Card.severity($0) < Card.severity($1) } ?? .secondary)
@@ -176,12 +176,11 @@ public enum CardModel {
         func center(_ meters: [MeterReport]) -> String { percentText(Report(meters: meters).headlinePercent) }
 
         func row(_ window: WindowReport, label: String, ring: Int?, pin: String? = nil) -> CardRow {
-            let percent = percentText(window.usedPercent)
             let counted = window.count.map { count -> String in
                 let numbers = String(format: "%.0f/%.0f", count.used, count.limit)
-                return " \u{00B7} " + (count.unit.map { "\(numbers) \($0)" } ?? numbers)
-            } ?? ""
-            return CardRow(label: label, percentText: percent + counted, percentOnly: percent, tone: tone(window.usedPercent),
+                return count.unit.map { "\(numbers) \($0)" } ?? numbers
+            }
+            return CardRow(label: label, percentText: percentText(window.usedPercent), tone: tone(window.usedPercent), count: counted,
                     reset: reset(window), ringIndex: ring, pin: pin, pinned: pin != nil && pin == pinned)
         }
 
@@ -204,7 +203,7 @@ public enum CardModel {
         func groupRow(_ meter: MeterReport) -> CardRow {
             let percent = Report(meters: [meter]).headlinePercent
             let key = Pin.key(run: run, meter: meter.id)
-            return CardRow(label: meter.label, percentText: percentText(percent), percentOnly: percentText(percent), tone: tone(percent), reset: nil,
+            return CardRow(label: meter.label, percentText: percentText(percent), tone: tone(percent), count: nil, reset: nil,
                            ringIndex: nil, pin: key, pinned: key == pinned)
         }
 

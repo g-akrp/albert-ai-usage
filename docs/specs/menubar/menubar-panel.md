@@ -9,14 +9,15 @@ This is the spec for the panel that appears when you click the menu bar icon.
 The app's own window with the look of a menu (menu material, 10 pt corners), under the menu bar icon, top to bottom:
 
 1. One card per provider run that is on, each in a thin rounded outline (system separator color, a little darker while the pointer is over the card). The outline is 10 pt from the menu's left and right edges. Cards sit 8 pt apart with no separator line between them; one separator follows the last card. Content is 12 pt further in than the rows' text on both sides (26 pt from the panel edge), which is 16 pt inside the outline's sides, and 16 pt inside its top and bottom. Every card has the same width: the widest content of any card, at least 300 pt, so nothing is clipped. Cards are transparent: the panel's background shows through. GitHub Copilot gets one card per `gh` account. Providers that are off are hidden.
-2. A separator, then the rows, drawn like menu items: configuration errors, `All providers are off` when every provider is off, **Refresh Now** (⌘R), `Updated <time>` (`Refreshing…` while any provider runs), **Providers** section, **Hidden Cards** section (only when a card is hidden), **Launch at Login**, **Open Providers Folder…**, the version as `AI Usage <version>`, the credit line `Built with ♥ by g.akrp` (the heart is the SF Symbol `heart.fill`, not an emoji, in the same gray as the text), **Quit**. **Cycle All Providers** is removed.
+2. A separator, then the rows, drawn like menu items: configuration errors, `All providers are off` when every provider is off, **Refresh Now** (⌘R), `Updated <time>` (`Refreshing…` while any provider runs), **Refresh Every** section, **Providers** section, **Hidden Cards** section (only when a card is hidden), **Launch at Login**, **Open Providers Folder…**, the version as `AI Usage <version>`, the credit line `Built with ♥ by g.akrp` (the heart is the SF Symbol `heart.fill`, not an emoji, in the same gray as the text), **Quit**. **Cycle All Providers** is removed.
 
 A panel taller than the screen scrolls.
 
 ## Staying open
 
 - A click on a card button or a row leaves the panel open and shows the result in place. Only **Open Providers Folder…** and **Quit** close it.
-- **Providers** and **Hidden Cards** are rows with a chevron at the right; a click opens the section in place as indented rows (a check mark per provider that is on, `Show <name>` per hidden card). Both sections close when the panel closes.
+- **Refresh Every**, **Providers** and **Hidden Cards** are rows with a chevron at the right; a click opens the section in place as indented rows (`10 s`, `30 s`, `1 min`, `5 min` with a check mark on the current one; a check mark per provider that is on; `Show <name>` per hidden card). The sections close when the panel closes.
+- The **Refresh Every** row shows the current interval, for example `Refresh Every 5 min`. Choosing another takes effect at once, for every provider (see [data source](../data-source/data-source.md)).
 - **Refresh Now** shows a spinner in place of `⌘R` while any provider runs. **Launch at Login** and provider rows show their check mark at the right.
 - The panel closes on: a click outside it, Esc, a click on the icon, another app or window taking focus.
 - Keys: `⌘R` refreshes, `⌘Q` quits, Up and Down move a highlight through the rows that can be clicked, Return or Space acts on the highlighted row. The pointer moves the same highlight. Cards are not in this order.
@@ -40,7 +41,7 @@ Ease-out. With Reduce Motion on, every duration is 0.
 | Button or row pressed | Darkens at once | none |
 | Pin, check mark, section chevron, row text | Crossfade | 0.12 to 0.15 s |
 
-A count such as `63% · 6280/10000 credits` does not count up; only a plain percent does. A change that comes during an animation starts from what is on screen.
+A change that comes during an animation starts from what is on screen.
 
 ## Card
 
@@ -71,7 +72,7 @@ Card content starts 12 pt right of the rows' text, which starts 14 pt from the p
 
 ### Rows
 
-- Each ring has a row: a dot in the ring's color, the label, and the used percent in a pill at the right (rounded, tinted with the percent's tone at 16% opacity, text in the tone color) so the value reads on any menu background. A window with a count (Copilot Premium Interactions) shows it in the same pill after the percent, a middle dot between: `63% · 6280/10000 credits`, or `63% · 120/300` when the count has no unit. Numbers are rounded to whole numbers, with no digit grouping. Used above the limit shows as is (`10320/10000`). A collapsed card's pills show the percent only.
+- Each ring has a row: a dot in the ring's color, the label, and the used percent in a pill at the right (rounded, tinted with the percent's tone at 16% opacity, text in the tone color) so the value reads on any menu background. A window with a count (Copilot Premium Interactions) shows it on its own line under the label, in the small gray text of the reset line and above it: `6280/10000 credits`, or `120/300` when the count has no unit. Numbers are rounded to whole numbers, with no digit grouping. Used above the limit shows as is (`10320/10000`). The pill and a collapsed card's pills show the percent only.
 - Spacing: 14 pt side margin, 12 pt top and bottom, 20 pt text lines, 8 pt between rows, 14 pt between charts, 4 pt between a header and what follows. A chart's rows are vertically centered against its rings when they are shorter than the rings.
 - Under it: the reset time in the local time zone, a middle dot, and the time until it, for example `Oct 5, 3:20 PM · in 2 minutes`. Relative units: seconds, minutes, hours, days (`in 1 minute`, `in 3 hours`, `in 4 days`). A reset time in the past shows `resetting…`. A window with no reset time shows no second line.
 - The relative text is computed when the panel opens, and again on each click in it and each finished run. There is no timer for it.

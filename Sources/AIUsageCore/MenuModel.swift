@@ -13,6 +13,8 @@ public enum MenuEntry: Equatable {
     case hiddenCards([HiddenCard])
     case refresh
     case updated(String)
+    /// How often every provider runs, in seconds: one of `Schedule.intervals`.
+    case refreshInterval(Int)
     case launchAtLogin(Bool)
     case openProvidersFolder
     case version(String)
@@ -46,7 +48,8 @@ public struct ProviderToggle: Equatable {
 public enum MenuModel {
     public static func entries(runs: [ProviderRun], pinned: String?, configErrors: [String],
                                providers: [ProviderToggle] = [], updated: String?,
-                               launchAtLogin: Bool, version: String, hidden: Set<String> = [], order: [String] = [], now: Date = Date(),
+                               launchAtLogin: Bool, version: String, hidden: Set<String> = [], order: [String] = [],
+                               refreshSeconds: Int = Schedule.standard, now: Date = Date(),
                                formatReset: (Date) -> String) -> [MenuEntry] {
         var entries: [MenuEntry] = []
         let pin = Pin.effective(pinned, in: runs)
@@ -65,7 +68,7 @@ public enum MenuModel {
         }
         entries.append(.refresh)
         if let updated { entries.append(.updated(updated)) }
-        entries.append(.separator)
+        entries += [.separator, .refreshInterval(refreshSeconds)]
         if !providers.isEmpty { entries.append(.providers(providers)) }
         let hiddenRuns = runs.filter { hidden.contains($0.id) }.map { HiddenCard(id: $0.id, name: $0.name) }
         if !hiddenRuns.isEmpty { entries.append(.hiddenCards(hiddenRuns)) }
@@ -106,6 +109,25 @@ public enum MenuModel {
 
 /// When each provider runs next.
 public enum Schedule {
+    /// The refresh intervals the user can choose, in seconds.
+    public static let intervals = [10, 30, 60, 300]
+    public static let standard = 300
+
+    /// `seconds` when it is one of `intervals`, else the standard interval; for a stored setting.
+    public static func valid(_ seconds: Int) -> Int { intervals.contains(seconds) ? seconds : standard }
+
+    /// "10 s", "1 min".
+    public static func label(_ seconds: Int) -> String { seconds < 60 ? "\(seconds) s" : "\(seconds / 60) min" }
+
+    /// How often the schedule timer fires: every 30 s, or every 10 s when the interval is that short.
+    public static func tick(interval: Int) -> TimeInterval { interval <= 30 ? 10 : 30 }
+
+    /// Whether a provider that last started at `started` should run again. The timer may fire a little
+    /// early, so a run due within a second counts.
+    public static func isDue(started: Date, interval: Int, failures: Int, now: Date) -> Bool {
+        started + delay(interval: interval, failures: failures) <= now + 1
+    }
+
     /// After `failures` failures in a row: 1, 2, 4, … minutes, at most 30. Otherwise the interval.
     public static func delay(interval: Int, failures: Int) -> TimeInterval {
         guard failures > 0 else { return TimeInterval(interval) }

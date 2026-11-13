@@ -4,7 +4,7 @@ import Foundation
 /// One line under the cards in the panel.
 public struct PanelRow: Equatable {
     public enum Kind: Equatable {
-        case separator, detail, refresh, updated, providers, provider(id: String), hiddenCards,
+        case separator, detail, refresh, updated, refreshEvery, interval(seconds: Int), providers, provider(id: String), hiddenCards,
              showCard(id: String), launchAtLogin, openProvidersFolder, version, credit(before: String, after: String), quit
     }
 
@@ -31,7 +31,7 @@ public struct PanelRow: Equatable {
 }
 
 public enum PanelModel {
-    public static let providersSection = "providers", hiddenSection = "hiddenCards"
+    public static let providersSection = "providers", hiddenSection = "hiddenCards", intervalSection = "interval"
 
     public static func cards(_ entries: [MenuEntry]) -> [Card] {
         entries.compactMap { if case .card(let card) = $0 { return card }; return nil }
@@ -47,6 +47,12 @@ public enum PanelModel {
             case .detail(let text, let tone): rows.append(PanelRow(.detail, text, tone: tone, enabled: false))
             case .refresh: rows.append(PanelRow(.refresh, "Refresh Now", shortcut: "\u{2318}R", spinning: refreshing))
             case .updated(let text): rows.append(PanelRow(.updated, text, enabled: false))
+            case .refreshInterval(let seconds):
+                let open = expanded.contains(intervalSection)
+                rows.append(PanelRow(.refreshEvery, "Refresh Every \(Schedule.label(seconds))", expanded: open))
+                if open {
+                    rows += Schedule.intervals.map { PanelRow(.interval(seconds: $0), Schedule.label($0), checked: $0 == seconds, indented: true) }
+                }
             case .providers(let toggles):
                 let open = expanded.contains(providersSection)
                 rows.append(PanelRow(.providers, "Providers", expanded: open))

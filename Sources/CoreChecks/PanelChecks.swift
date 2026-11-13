@@ -40,6 +40,26 @@ func panelChecks() {
     check("cardsKept", PanelModel.cards([.card(card([[0.1]])), .separator]).count == 1)
     check("rowsDetailTone", PanelModel.rows([.detail("bad", .red)], expanded: [], refreshing: false).first?.tone == .red)
 
+    let timed = PanelModel.rows([.refreshInterval(60)], expanded: [], refreshing: false)
+    check("rowsIntervalClosed", timed.count == 1 && timed[0].kind == .refreshEvery && timed[0].title == "Refresh Every 1 min" && timed[0].expanded == false)
+    let timedOpen = PanelModel.rows([.refreshInterval(60)], expanded: [PanelModel.intervalSection], refreshing: false)
+    check("rowsIntervalChoices", timedOpen.dropFirst().map(\.kind) == Schedule.intervals.map { .interval(seconds: $0) })
+    check("rowsIntervalTitles", timedOpen.dropFirst().map(\.title) == ["10 s", "30 s", "1 min", "5 min"])
+    check("rowsIntervalChecked", timedOpen.dropFirst().map(\.checked) == [false, false, true, false] && timedOpen[1].indented)
+    check("entriesHaveInterval", MenuModel.entries(runs: [], pinned: nil, configErrors: [], updated: nil, launchAtLogin: false, version: "1",
+                                                   refreshSeconds: 30, formatReset: { _ in "" }).contains(.refreshInterval(30)))
+
+    check("intervalChoices", Schedule.intervals == [10, 30, 60, 300])
+    check("intervalValid", Schedule.valid(10) == 10 && Schedule.valid(7) == 300 && Schedule.valid(0) == 300)
+    check("tickFastForShortIntervals", Schedule.tick(interval: 10) == 10 && Schedule.tick(interval: 30) == 10)
+    check("tickSlowOtherwise", Schedule.tick(interval: 60) == 30 && Schedule.tick(interval: 300) == 30)
+    let began = Date(timeIntervalSince1970: 1000)
+    check("dueAfterInterval", Schedule.isDue(started: began, interval: 10, failures: 0, now: began + 10))
+    check("dueWithinTimerSlack", Schedule.isDue(started: began, interval: 10, failures: 0, now: began + 9.5))
+    check("notDueEarly", !Schedule.isDue(started: began, interval: 10, failures: 0, now: began + 8))
+    check("dueBacksOffAfterFailure", !Schedule.isDue(started: began, interval: 10, failures: 1, now: began + 30)
+          && Schedule.isDue(started: began, interval: 10, failures: 1, now: began + 60))
+
     let enabled = [true, false, true, false]
     check("highlightFirst", PanelModel.highlight(from: nil, step: 1, enabled: enabled) == 0)
     check("highlightLast", PanelModel.highlight(from: nil, step: -1, enabled: enabled) == 2)

@@ -1,6 +1,6 @@
 # GitHub Copilot
 
-File: `Resources/providers/copilot.json`. Icon `GHC` (`GH1`, `GH2`, … with several accounts), color `8957E5`. Refresh every 5 minutes, timeout 20 s.
+File: `Resources/providers/copilot.json`. Icon `GHC` (`GH1`, `GH2`, … with several accounts), color `8957E5`. Timeout 20 s.
 
 ## Accounts
 

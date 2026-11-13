@@ -1,6 +1,6 @@
 # Claude Code
 
-File: `Resources/providers/claude.json`. Icon `CLD`, color `D97757`. Refresh every 5 minutes, timeout 90 s.
+File: `Resources/providers/claude.json`. Icon `CLD`, color `D97757`. Timeout 90 s.
 
 ## Source
 

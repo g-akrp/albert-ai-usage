@@ -1,6 +1,6 @@
 # Codex
 
-File: `Resources/providers/codex.json`. Icon `CDX`, color `10A37F`. Refresh every 5 minutes, timeout 20 s.
+File: `Resources/providers/codex.json`. Icon `CDX`, color `10A37F`. Timeout 20 s.
 
 ## Source
 

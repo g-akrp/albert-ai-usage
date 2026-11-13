@@ -70,7 +70,7 @@ This builds the app, signs it ad hoc, and copies it to `~/Applications`.
 - **Providers** turns each provider on or off. The choice is kept across launches.
 - **Hidden Cards** brings back a card you hid.
 - **Launch at Login** starts the app when you log in.
-- Each provider refreshes on its own interval (5 minutes; Antigravity 10 minutes). A failing provider retries after 1, 2, 4, … minutes, at most every 30.
+- Every provider refreshes every 5 minutes; **Refresh Every** in the panel changes that to 10 s, 30 s or 1 min. A failing provider retries after 1, 2, 4, … minutes, at most every 30.
 
 Upgrading from older versions:
 

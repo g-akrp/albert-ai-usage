@@ -483,6 +483,7 @@ private func countChecks() {
         return (report, CardModel.card(run, pinned: nil, now: Date(timeIntervalSince1970: 1_000_000), formatReset: { _ in "D" }))
     }
     func pill(_ window: String, _ answer: String) -> String? { mapped(window, answer).card.charts.first?.rows.first?.percentText }
+    func counted(_ window: String, _ answer: String) -> String? { mapped(window, answer).card.charts.first?.rows.first?.count }
 
     // (a) Reset read from the top-level answer.
     let root = mapped(#""resetsAt": {"from": "root", "path": "/reset", "as": "iso8601"}"#,
@@ -493,12 +494,14 @@ private func countChecks() {
     check("resetWithoutFromStaysRelative", relative.report.meters.first?.windows.first?.resetsAt == Date(timeIntervalSince1970: 1791244800))
 
     // (b) Count parse, shown in the row pill text. Used = limit - remaining.
-    check("countCredits", pill(count, #"{"q": {"pr": 37, "ent": 10000, "rem": 3720, "tbb": true}}"#) == "63% \u{B7} 6280/10000 credits")
-    check("countUnitOnlyWhenConditionTrue", pill(count, #"{"q": {"pr": 37, "ent": 300, "rem": 180, "tbb": false}}"#) == "63% \u{B7} 120/300")
-    check("countUnitConditionMissing", pill(count, #"{"q": {"pr": 37, "ent": 300, "rem": 180}}"#) == "63% \u{B7} 120/300")
-    check("countNoUnitSpec", pill(#""count": {"limit": {"path": "/ent"}, "remaining": {"path": "/rem"}}"#,
-                                  #"{"q": {"pr": 37, "ent": 300, "rem": 180, "tbb": true}}"#) == "63% \u{B7} 120/300")
-    check("countOverageUnclamped", pill(count, #"{"q": {"pr": 0, "ent": 10000, "rem": -320, "tbb": true}}"#) == "100% \u{B7} 10320/10000 credits")
+    check("countPillIsPercentOnly", pill(count, #"{"q": {"pr": 37, "ent": 10000, "rem": 3720, "tbb": true}}"#) == "63%")
+    check("countNoneWithoutLimit", counted(#""resetsAt": {"path": "/reset", "as": "iso8601"}"#, #"{"q": {"pr": 37}}"#) == nil)
+    check("countCredits", counted(count, #"{"q": {"pr": 37, "ent": 10000, "rem": 3720, "tbb": true}}"#) == "6280/10000 credits")
+    check("countUnitOnlyWhenConditionTrue", counted(count, #"{"q": {"pr": 37, "ent": 300, "rem": 180, "tbb": false}}"#) == "120/300")
+    check("countUnitConditionMissing", counted(count, #"{"q": {"pr": 37, "ent": 300, "rem": 180}}"#) == "120/300")
+    check("countNoUnitSpec", counted(#""count": {"limit": {"path": "/ent"}, "remaining": {"path": "/rem"}}"#,
+                                     #"{"q": {"pr": 37, "ent": 300, "rem": 180, "tbb": true}}"#) == "120/300")
+    check("countOverageUnclamped", counted(count, #"{"q": {"pr": 0, "ent": 10000, "rem": -320, "tbb": true}}"#) == "10320/10000 credits")
     check("countLimitZeroNone", pill(count, #"{"q": {"pr": 37, "ent": 0, "rem": 0, "tbb": true}}"#) == "63%")
     check("countLimitMissingNone", pill(count, #"{"q": {"pr": 37, "rem": 3720, "tbb": true}}"#) == "63%")
     check("countRemainingMissingNone", pill(count, #"{"q": {"pr": 37, "ent": 10000, "tbb": true}}"#) == "63%")

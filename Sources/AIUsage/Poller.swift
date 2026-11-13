@@ -1,7 +1,7 @@
 import AIUsageCore
 import Foundation
 
-/// Runs each provider on its own interval, at most two at a time, and keeps the latest results.
+/// Runs every provider on `interval`, at most two at a time, and keeps the latest results.
 /// Main thread only; provider runs happen on a background queue.
 final class Poller {
     private(set) var runs: [ProviderRun] = []
@@ -13,6 +13,15 @@ final class Poller {
     var providerNames: [(id: String, name: String)] {
         order.compactMap { id in configs[id].map { (id, $0.name) } }
     }
+    /// Seconds between runs of a provider, counted from when a run starts: one of `Schedule.intervals`.
+    /// It replaces each provider file's `refresh.intervalSeconds`.
+    var interval = Schedule.standard {
+        didSet {
+            guard interval != oldValue else { return }
+            startTimer()
+            tick()
+        }
+    }
     private(set) var configErrors: [String] = []
     private(set) var lastUpdate: Date?
     /// Whether any provider is running now.
@@ -20,7 +29,7 @@ final class Poller {
     var onChange: (() -> Void)?
 
     private struct State {
-        var next = Date.distantPast
+        var started = Date.distantPast
         var failures = 0
         var running = false
     }
@@ -47,8 +56,15 @@ final class Poller {
     func start() {
         reloadConfigs()
         reloadEnvironment()
-        let timer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in self?.tick() }
-        timer.tolerance = 10
+        startTimer()
+    }
+
+    /// The one schedule timer; it fires faster only when the interval is short (see `Schedule.tick`).
+    private func startTimer() {
+        timer?.invalidate()
+        let period = Schedule.tick(interval: interval)
+        let timer = Timer(timeInterval: period, repeats: true) { [weak self] _ in self?.tick() }
+        timer.tolerance = period / 10
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
     }
@@ -56,7 +72,7 @@ final class Poller {
     /// Rereads the provider files and the login shell, then runs every provider that is not already running.
     func refreshNow() {
         reloadConfigs()
-        for id in states.keys { states[id]?.next = .distantPast }
+        for id in states.keys { states[id]?.started = .distantPast }
         reloadEnvironment()
     }
 
@@ -84,8 +100,10 @@ final class Poller {
         let now = Date()
         var started = false
         for id in order where !disabled.contains(id) {
-            guard let state = states[id], !state.running, state.next <= now, let config = configs[id] else { continue }
+            guard let state = states[id], !state.running, let config = configs[id],
+                  Schedule.isDue(started: state.started, interval: interval, failures: state.failures, now: now) else { continue }
             states[id]?.running = true
+            states[id]?.started = now
             started = true
             queue.addOperation { [weak self] in
                 let results = runner.runAll(config)
@@ -101,7 +119,6 @@ final class Poller {
         state.running = false
         let failed = results.allSatisfy { if case .failure = $0.result { return true } else { return false } }
         state.failures = failed ? state.failures + 1 : 0
-        state.next = Date() + Schedule.delay(interval: config.refreshSeconds, failures: state.failures)
         states[config.id] = state
         let index = runs.firstIndex { $0.configId == config.id } ?? runs.endIndex
         runs.removeAll { $0.configId == config.id }

@@ -14,7 +14,7 @@ final class StatusController: NSObject {
     }()
 
     private var icon: IconSpec?
-    /// The Providers and Hidden Cards sections that are open in the panel; both close with it.
+    /// The Refresh Every, Providers and Hidden Cards sections that are open in the panel; all close with it.
     private var expandedSections: Set<String> = []
     private lazy var panel: PanelController = {
         let panel = PanelController(actions: PanelActions(pin: { [weak self] key in
@@ -70,6 +70,12 @@ final class StatusController: NSObject {
         set { defaults.set(newValue.sorted(), forKey: "collapsedCards") }
     }
 
+    /// Seconds between runs of every provider; 5 minutes until the user picks another.
+    private var refreshSeconds: Int {
+        get { Schedule.valid(defaults.integer(forKey: "refreshSeconds")) }
+        set { defaults.set(newValue, forKey: "refreshSeconds") }
+    }
+
     private var pinned: String? {
         get { defaults.string(forKey: "pinnedProvider") }
         set { defaults.set(newValue, forKey: "pinnedProvider") }
@@ -86,6 +92,7 @@ final class StatusController: NSObject {
         statusItem.button?.action = #selector(togglePanel)
         statusItem.button?.sendAction(on: [.leftMouseDown, .rightMouseDown])
         poller.disabled = disabled
+        poller.interval = refreshSeconds
         poller.onChange = { [weak self] in self?.pollerChanged() }
         updateIcons()
         poller.start()
@@ -180,7 +187,7 @@ final class StatusController: NSObject {
             updated: MenuModel.updatedText(poller.lastUpdate, refreshing: poller.isRunning,
                                            formatTime: timeFormatter.string(from:)),
             launchAtLogin: SMAppService.mainApp.status == .enabled,
-            version: AppVersion.current, hidden: hiddenCards, order: cardOrder, formatReset: { MenuModel.resetText($0, now: Date()) })
+            version: AppVersion.current, hidden: hiddenCards, order: cardOrder, refreshSeconds: refreshSeconds, formatReset: { MenuModel.resetText($0, now: Date()) })
         return PanelContent(cards: PanelModel.cards(entries), collapsed: collapsedCards,
                             rows: PanelModel.rows(entries, expanded: expandedSections, refreshing: poller.isRunning))
     }
@@ -194,6 +201,10 @@ final class StatusController: NSObject {
     private func rowClicked(_ kind: PanelRow.Kind) {
         switch kind {
         case .refresh: refresh()
+        case .refreshEvery: expandedSections.formSymmetricDifference([PanelModel.intervalSection])
+        case .interval(let seconds):
+            refreshSeconds = seconds
+            poller.interval = seconds
         case .providers: expandedSections.formSymmetricDifference([PanelModel.providersSection])
         case .hiddenCards: expandedSections.formSymmetricDifference([PanelModel.hiddenSection])
         case .provider(let id): toggleProvider(id)

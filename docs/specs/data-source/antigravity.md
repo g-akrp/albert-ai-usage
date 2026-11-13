@@ -1,6 +1,6 @@
 # Antigravity
 
-File: `Resources/providers/antigravity.json`. Icon `AGY`, color `4285F4`. Refresh every 10 minutes, timeout 90 s.
+File: `Resources/providers/antigravity.json`. Icon `AGY`, color `4285F4`. Timeout 90 s.
 
 ## Source
 

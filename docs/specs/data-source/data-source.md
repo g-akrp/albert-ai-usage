@@ -32,8 +32,9 @@ A report: optional plan, optional flags (`available`, `access`), and meters. A m
 
 ## Schedule
 
-- A 30 s timer starts every provider that is due, at most two at a time.
-- Interval per provider: 5 minutes (Antigravity 10 minutes).
+- One timer starts every provider that is due, at most two at a time. It fires every 30 s, or every 10 s when the interval is 10 s or 30 s.
+- One interval for all providers, chosen in the panel under **Refresh Every**: 10 s, 30 s, 1 min or 5 min (the default; user default `refreshSeconds`). It is counted from when a run starts; a provider never runs twice at once. A provider file's `refresh.intervalSeconds` is still read and checked, but this app does not use it.
+- A short interval starts each provider's CLI that often; a service may answer with a rate limit, which shows as that card's error and backs off as below.
 - After a failure the retry delay is 1, 2, 4, … minutes, at most 30. A success resets it.
 - Refresh Now runs all providers at once.
 - A provider that is off never runs.
