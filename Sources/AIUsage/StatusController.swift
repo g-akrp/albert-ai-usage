@@ -2,9 +2,8 @@ import AIUsageCore
 import AppKit
 import ServiceManagement
 
-final class StatusController: NSObject, NSMenuDelegate {
+final class StatusController: NSObject {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let menu = NSMenu()
     private let defaults = UserDefaults.standard
     private let poller: Poller
     private let userFolder = ProviderStore.userFolder(home: NSHomeDirectory())
@@ -15,12 +14,31 @@ final class StatusController: NSObject, NSMenuDelegate {
     }()
 
     private var icon: IconSpec?
-    private var cardWidth: CGFloat = 300
-    /// Where card content starts, measured from the open menu: item text starts at 14 pt, or 22 pt when an
-    /// item has a check mark (Launch at Login on) and macOS makes room for the check column. Cards follow.
-    private var cardLeading: CGFloat = 14
-    private var menuOpen = false
-    private var menuRebuildPending = false
+    /// The Providers and Hidden Cards sections that are open in the panel; both close with it.
+    private var expandedSections: Set<String> = []
+    private lazy var panel: PanelController = {
+        let panel = PanelController(actions: PanelActions(pin: { [weak self] key in
+            self?.pinned = key
+            self?.updateIcons()
+            self?.refreshPanel()
+        }, hide: { [weak self] id in
+            self?.hiddenCards.insert(id)
+            self?.refreshPanel()
+        }, move: { [weak self] id, step in
+            self?.moveCard(id, by: step)
+            self?.refreshPanel()
+        }, toggle: { [weak self] id in
+            guard var set = self?.collapsedCards else { return }
+            if set.contains(id) { set.remove(id) } else { set.insert(id) }
+            self?.collapsedCards = set
+            self?.refreshPanel()
+        }, row: { [weak self] in self?.rowClicked($0) }))
+        panel.onClose = { [weak self] in
+            self?.expandedSections = []
+            self?.statusItem.button?.highlight(false)
+        }
+        return panel
+    }()
     /// Set by Refresh Now until every provider it started has finished; the menu bar icon dims meanwhile.
     private var manualRefresh = false
 
@@ -63,10 +81,10 @@ final class StatusController: NSObject, NSMenuDelegate {
         super.init()
         migrateOldPin()
 
-        menu.delegate = self
-        menu.autoenablesItems = false
-        statusItem.menu = menu
         statusItem.button?.imagePosition = .imageOnly
+        statusItem.button?.target = self
+        statusItem.button?.action = #selector(togglePanel)
+        statusItem.button?.sendAction(on: [.leftMouseDown, .rightMouseDown])
         poller.disabled = disabled
         poller.onChange = { [weak self] in self?.pollerChanged() }
         updateIcons()
@@ -97,7 +115,7 @@ final class StatusController: NSObject, NSMenuDelegate {
     private func pollerChanged() {
         if manualRefresh, !poller.isRunning { manualRefresh = false }
         updateIcons()
-        rebuildOpenMenu()
+        refreshPanel()
     }
 
     // MARK: Menu bar icon
@@ -143,24 +161,17 @@ final class StatusController: NSObject, NSMenuDelegate {
         NSColor(srgbRed: CGFloat(rgb.r) / 255, green: CGFloat(rgb.g) / 255, blue: CGFloat(rgb.b) / 255, alpha: 1)
     }
 
-    // MARK: Menu
+    // MARK: Panel
 
-    func menuWillOpen(_ menu: NSMenu) { menuOpen = true }
-    func menuDidClose(_ menu: NSMenu) { menuOpen = false }
-
-    /// Redraws the open menu so a card action or a finished run shows without reopening it. Waits for
-    /// the current event to end, since the card that was clicked is replaced.
-    private func rebuildOpenMenu() {
-        guard menuOpen, !menuRebuildPending else { return }
-        menuRebuildPending = true
-        RunLoop.main.perform(inModes: [.common]) { [weak self] in
-            guard let self else { return }
-            menuRebuildPending = false
-            if menuOpen { menuNeedsUpdate(menu) }
-        }
+    @objc private func togglePanel() {
+        guard let button = statusItem.button else { return }
+        if panel.isOpen { return panel.close() }
+        panel.open(under: button, content: content())
+        // The button drops its highlight when this click ends; set it after that.
+        DispatchQueue.main.async { [weak self] in button.highlight(self?.panel.isOpen == true) }
     }
 
-    func menuNeedsUpdate(_ menu: NSMenu) {
+    private func content() -> PanelContent {
         let entries = MenuModel.entries(
             runs: visibleRuns, pinned: pinned, configErrors: poller.configErrors,
             providers: poller.providerNames.map {
@@ -170,127 +181,34 @@ final class StatusController: NSObject, NSMenuDelegate {
                                            formatTime: timeFormatter.string(from:)),
             launchAtLogin: SMAppService.mainApp.status == .enabled,
             version: AppVersion.current, hidden: hiddenCards, order: cardOrder, formatReset: { MenuModel.resetText($0, now: Date()) })
-        cardLeading = SMAppService.mainApp.status == .enabled ? 22 : 14
-        cardWidth = CardView.width(for: entries.compactMap { if case .card(let card) = $0 { return card }; return nil },
-                                   leading: cardLeading)
-        menu.removeAllItems()
-        let cardCount = entries.filter { if case .card = $0 { return true }; return false }.count
-        var cardIndex = 0
-        for entry in entries {
-            if case .card = entry { cardIndex += 1 }
-            menu.addItem(item(for: entry, position: (cardIndex - 1, cardCount)))
-        }
+        return PanelContent(cards: PanelModel.cards(entries), collapsed: collapsedCards,
+                            rows: PanelModel.rows(entries, expanded: expandedSections, refreshing: poller.isRunning))
     }
 
-    /// `position` is the card's index and the card count; ignored for other entries.
-    private func item(for entry: MenuEntry, position: (index: Int, count: Int)) -> NSMenuItem {
-        switch entry {
-        case .separator:
-            return .separator()
-        case .card(let card):
-            let item = NSMenuItem()
-            item.view = CardView(card: card, width: cardWidth, leading: cardLeading,
-                                 collapsed: collapsedCards.contains(card.id), canMoveUp: position.index > 0,
-                                 canMoveDown: position.index < position.count - 1, onPin: { [weak self] key in
-                self?.pinned = key
-                self?.updateIcons()
-                self?.rebuildOpenMenu()
-            }, onHide: { [weak self] id in
-                self?.hiddenCards.insert(id)
-                self?.rebuildOpenMenu()
-            }, onMove: { [weak self] id, step in
-                self?.moveCard(id, by: step)
-                self?.rebuildOpenMenu()
-            }, onToggle: { [weak self] id in
-                guard var set = self?.collapsedCards else { return }
-                if set.contains(id) { set.remove(id) } else { set.insert(id) }
-                self?.collapsedCards = set
-                self?.rebuildOpenMenu()
-            })
-            return item
-        case .detail(let text, let tone):
-            let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
-            if let color = Self.color(tone) {
-                item.attributedTitle = NSAttributedString(
-                    string: text, attributes: [.foregroundColor: color, .font: NSFont.menuFont(ofSize: 0)])
-            }
-            return item
-        case .refresh:
-            return action("Refresh Now", #selector(refresh), key: "r")
-        case .updated(let text), .version(let text):
-            let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
-            item.isEnabled = false
-            return item
-        case .credit(let before, let after):
-            let item = NSMenuItem(title: "\(before) heart \(after)", action: nil, keyEquivalent: "")
-            item.isEnabled = false
-            let heart = NSTextAttachment()
-            if let symbol = NSImage(systemSymbolName: "heart.fill", accessibilityDescription: "love") {
-                // The same gray as the text around it.
-                heart.image = NSImage(size: symbol.size, flipped: false) { rect in
-                    symbol.draw(in: rect)
-                    NSColor.disabledControlTextColor.set()
-                    rect.fill(using: .sourceAtop)
-                    return true
-                }
-            }
-            let text = NSMutableAttributedString(string: "\(before) ")
-            text.append(NSAttributedString(attachment: heart))
-            text.append(NSAttributedString(string: " \(after)"))
-            text.addAttributes([.font: NSFont.menuFont(ofSize: 0), .foregroundColor: NSColor.disabledControlTextColor],
-                               range: NSRange(location: 0, length: text.length))
-            item.attributedTitle = text
-            return item
-        case .providers(let toggles):
-            let item = NSMenuItem(title: "Providers", action: nil, keyEquivalent: "")
-            let submenu = NSMenu()
-            for toggle in toggles {
-                let entry = action(toggle.name, #selector(toggleProvider(_:)))
-                entry.representedObject = toggle.id
-                entry.state = toggle.enabled ? .on : .off
-                submenu.addItem(entry)
-            }
-            item.submenu = submenu
-            return item
-        case .hiddenCards(let cards):
-            let item = NSMenuItem(title: "Hidden Cards", action: nil, keyEquivalent: "")
-            let submenu = NSMenu()
-            for card in cards {
-                let entry = action("Show \(card.name)", #selector(showCard(_:)))
-                entry.representedObject = card.id
-                submenu.addItem(entry)
-            }
-            item.submenu = submenu
-            return item
-        case .launchAtLogin(let enabled):
-            let item = action("Launch at Login", #selector(toggleLaunchAtLogin))
-            item.state = enabled ? .on : .off
-            return item
+    /// Shows a card action, a row click or a finished run in the open panel.
+    private func refreshPanel() {
+        if panel.isOpen { panel.update(content()) }
+    }
+
+    /// Every row leaves the panel open except Open Providers Folder and Quit.
+    private func rowClicked(_ kind: PanelRow.Kind) {
+        switch kind {
+        case .refresh: refresh()
+        case .providers: expandedSections.formSymmetricDifference([PanelModel.providersSection])
+        case .hiddenCards: expandedSections.formSymmetricDifference([PanelModel.hiddenSection])
+        case .provider(let id): toggleProvider(id)
+        case .showCard(let id): hiddenCards.remove(id)
+        case .launchAtLogin: toggleLaunchAtLogin()
         case .openProvidersFolder:
-            return action("Open Providers Folder…", #selector(openProvidersFolder))
-        case .quit:
-            return action("Quit AI Usage", #selector(quit), key: "q")
+            panel.close()
+            openProvidersFolder()
+        case .quit: quit()
+        case .separator, .detail, .updated, .version, .credit: return
         }
+        refreshPanel()
     }
 
-    private func action(_ title: String, _ selector: Selector, key: String = "") -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: selector, keyEquivalent: key)
-        item.target = self
-        return item
-    }
-
-    private static func color(_ tone: Tone) -> NSColor? {
-        switch tone {
-        case .normal: return nil
-        case .secondary: return .secondaryLabelColor
-        case .green: return .systemGreen
-        case .orange: return .systemOrange
-        case .red: return .systemRed
-        }
-    }
-
-    @objc private func toggleProvider(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String else { return }
+    private func toggleProvider(_ id: String) {
         var set = disabled
         if set.contains(id) { set.remove(id) } else { set.insert(id) }
         disabled = set
@@ -303,18 +221,13 @@ final class StatusController: NSObject, NSMenuDelegate {
         cardOrder = CardOrder.moved(id, by: step, in: ids, hidden: hiddenCards)
     }
 
-    @objc private func showCard(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String else { return }
-        hiddenCards.remove(id)
-    }
-
-    @objc private func refresh() {
+    private func refresh() {
         poller.refreshNow()
         manualRefresh = poller.isRunning
         updateIcons()
     }
 
-    @objc private func toggleLaunchAtLogin() {
+    private func toggleLaunchAtLogin() {
         do {
             if SMAppService.mainApp.status == .enabled {
                 try SMAppService.mainApp.unregister()
@@ -326,12 +239,12 @@ final class StatusController: NSObject, NSMenuDelegate {
         }
     }
 
-    @objc private func openProvidersFolder() {
+    private func openProvidersFolder() {
         try? FileManager.default.createDirectory(at: userFolder, withIntermediateDirectories: true)
         NSWorkspace.shared.open(userFolder)
     }
 
-    @objc private func quit() {
+    private func quit() {
         NSApp.terminate(nil)
     }
 }

@@ -118,7 +118,7 @@ The checks are an executable target, not XCTest, because XCTest does not build w
 | Path | What |
 |------|------|
 | `Sources/AIUsageCore/` | Provider format, mapping, process runner, environment, pixel font, menu model |
-| `Sources/AIUsage/` | AppKit shell: `StatusController` (icon, menu), `Poller` (schedule) |
+| `Sources/AIUsage/` | AppKit shell: `StatusController` (icon, actions), `PanelController` (panel window, motion), `CardView`, `RowView`, `Poller` (schedule) |
 | `Sources/CoreChecks/` | Check runner |
 | `Resources/` | `Info.plist`, `AppIcon.icns`, shipped `providers/` |
 | `example/` | Maestri's provider format guide and examples |
@@ -130,7 +130,8 @@ The two pictures above are drawn from the app's own font, colors, and card view,
 swiftc -parse-as-library -o build/make-showcase Sources/AIUsageCore/*.swift scripts/make-showcase.swift
 build/make-showcase
 grep -v '^import AIUsageCore$' Sources/AIUsage/CardView.swift > build/CardView.swift
-swiftc -parse-as-library -o build/make-panel Sources/AIUsageCore/*.swift build/CardView.swift scripts/make-panel.swift
+grep -v '^import AIUsageCore$' Sources/AIUsage/RowView.swift > build/RowView.swift
+swiftc -parse-as-library -o build/make-panel Sources/AIUsageCore/*.swift build/CardView.swift build/RowView.swift scripts/make-panel.swift
 build/make-panel
 ```
 

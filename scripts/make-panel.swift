@@ -1,7 +1,8 @@
 // Draws docs/images/panel.png: the menu bar panel with sample data, in light and dark appearance.
 // Run from the repo root:
 //   grep -v '^import AIUsageCore$' Sources/AIUsage/CardView.swift > build/CardView.swift
-//   swiftc -parse-as-library -o build/make-panel Sources/AIUsageCore/*.swift build/CardView.swift scripts/make-panel.swift
+//   grep -v '^import AIUsageCore$' Sources/AIUsage/RowView.swift > build/RowView.swift
+//   swiftc -parse-as-library -o build/make-panel Sources/AIUsageCore/*.swift build/CardView.swift build/RowView.swift scripts/make-panel.swift
 //   build/make-panel
 // Renders the app's own CardView, so the picture cannot drift from the app.
 import AppKit

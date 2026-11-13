@@ -32,6 +32,10 @@ public struct CardChart: Equatable {
     public let center: String
     public let rings: [CardRing]
     public let rows: [CardRow]
+
+    public init(title: String?, pin: String?, pinned: Bool, center: String, rings: [CardRing], rows: [CardRow]) {
+        (self.title, self.pin, self.pinned, self.center, self.rings, self.rows) = (title, pin, pinned, center, rings, rows)
+    }
 }
 
 public struct CardNotice: Equatable {
@@ -57,6 +61,12 @@ public struct Card: Equatable {
     public let charts: [CardChart]
     /// Groups past the fourth chart, as rows without rings.
     public let overflow: [CardRow]
+
+    public init(id: String, title: String, subtitle: String?, accent: RGB, pin: String, pinned: Bool, message: CardNotice?,
+                notices: [CardNotice], charts: [CardChart], overflow: [CardRow]) {
+        (self.id, self.title, self.subtitle, self.accent, self.pin, self.pinned) = (id, title, subtitle, accent, pin, pinned)
+        (self.message, self.notices, self.charts, self.overflow) = (message, notices, charts, overflow)
+    }
 }
 
 /// One value on a collapsed card: a percent in its tone.

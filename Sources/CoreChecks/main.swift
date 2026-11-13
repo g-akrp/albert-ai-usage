@@ -19,6 +19,7 @@ accountChecks()
 pinChecks()
 toggleChecks()
 cardChecks()
+panelChecks()
 
 if failures.isEmpty {
     print("ALL PASS")

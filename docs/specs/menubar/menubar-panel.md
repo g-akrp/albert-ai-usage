@@ -2,18 +2,49 @@
 
 This is the spec for the panel that appears when you click the menu bar icon.
 
-**Status: implemented.** A card per provider replaced the plain text menu with `☆`/`★` stars; cycle mode is removed.
+**Status: implemented.** A card per provider replaced the plain text menu with `☆`/`★` stars; cycle mode is removed. Since the panel got motion it is the app's own window, not an `NSMenu` (design: `docs/superpowers/specs/2026-11-13-panel-motion-design.md`).
 
 ## Layout
 
-A standard AppKit menu, top to bottom:
+The app's own window with the look of a menu (menu material, 10 pt corners), under the menu bar icon, top to bottom:
 
-1. One card per provider run that is on, each in a thin rounded outline (system separator color, a little darker while the pointer is over the card). The outline is 10 pt from the menu's left and right edges. Cards sit 8 pt apart with no separator line between them; one separator follows the last card. Content is 12 pt further in than the other items' text on both sides (26 or 34 pt from the menu edge, see below), which is 16 or 24 pt inside the outline's sides, and 16 pt inside its top and bottom. Every card has the same width: the widest content of any card, at least 300 pt, so nothing is clipped. Cards are transparent: the menu's own background shows through. GitHub Copilot gets one card per `gh` account. Providers that are off are hidden.
-2. A separator, then the normal items: configuration errors, `All providers are off` when every provider is off, **Refresh Now** (⌘R), `Updated <time>` (`Refreshing…` while any provider runs), **Providers** submenu, **Hidden Cards** submenu (only when a card is hidden), **Launch at Login**, **Open Providers Folder…**, the version as `AI Usage <version>`, the credit line `Built with ♥ by g.akrp` (the heart is the SF Symbol `heart.fill`, not an emoji, in the same gray as the text), **Quit**. **Cycle All Providers** is removed.
+1. One card per provider run that is on, each in a thin rounded outline (system separator color, a little darker while the pointer is over the card). The outline is 10 pt from the menu's left and right edges. Cards sit 8 pt apart with no separator line between them; one separator follows the last card. Content is 12 pt further in than the rows' text on both sides (26 pt from the panel edge), which is 16 pt inside the outline's sides, and 16 pt inside its top and bottom. Every card has the same width: the widest content of any card, at least 300 pt, so nothing is clipped. Cards are transparent: the panel's background shows through. GitHub Copilot gets one card per `gh` account. Providers that are off are hidden.
+2. A separator, then the rows, drawn like menu items: configuration errors, `All providers are off` when every provider is off, **Refresh Now** (⌘R), `Updated <time>` (`Refreshing…` while any provider runs), **Providers** section, **Hidden Cards** section (only when a card is hidden), **Launch at Login**, **Open Providers Folder…**, the version as `AI Usage <version>`, the credit line `Built with ♥ by g.akrp` (the heart is the SF Symbol `heart.fill`, not an emoji, in the same gray as the text), **Quit**. **Cycle All Providers** is removed.
+
+A panel taller than the screen scrolls.
+
+## Staying open
+
+- A click on a card button or a row leaves the panel open and shows the result in place. Only **Open Providers Folder…** and **Quit** close it.
+- **Providers** and **Hidden Cards** are rows with a chevron at the right; a click opens the section in place as indented rows (a check mark per provider that is on, `Show <name>` per hidden card). Both sections close when the panel closes.
+- **Refresh Now** shows a spinner in place of `⌘R` while any provider runs. **Launch at Login** and provider rows show their check mark at the right.
+- The panel closes on: a click outside it, Esc, a click on the icon, another app or window taking focus.
+- Keys: `⌘R` refreshes, `⌘Q` quits, Up and Down move a highlight through the rows that can be clicked, Return or Space acts on the highlighted row. The pointer moves the same highlight. Cards are not in this order.
+- Rows are accessibility buttons, or check boxes with their state; a section row says `expanded` or `collapsed`.
+
+## Motion
+
+Ease-out. With Reduce Motion on, every duration is 0.
+
+| Event | What moves | Duration |
+|---|---|---|
+| Panel opens | Fade in, 6 pt slide down | 0.15 s |
+| Panel opens, or a card appears | Rings sweep from 0, percents count up | 0.5 s |
+| Panel closes | Fade out | 0.1 s |
+| A refresh brings a new value | Ring, center percent and pill move from what is shown to the new value; the pill's color blends when the tone changes | 0.4 s |
+| Collapse or expand | Card height animates, content crossfades, chevron turns, everything below slides | 0.22 s |
+| Move up or down | The two cards slide past each other | 0.22 s |
+| A card or row goes | It fades out, then the rest slides | 0.15 s, then 0.22 s |
+| A card or row appears | The rest slides, then it fades in | 0.22 s, then 0.15 s |
+| Pointer enters or leaves a card | Outline and buttons fade | 0.12 s |
+| Button or row pressed | Darkens at once | none |
+| Pin, check mark, section chevron, row text | Crossfade | 0.12 to 0.15 s |
+
+A count such as `63% · 6280/10000 credits` does not count up; only a plain percent does. A change that comes during an animation starts from what is on screen.
 
 ## Card
 
-Card content starts at the same left edge as the text of the other menu items: 14 pt, or 22 pt while **Launch at Login** is on (macOS then reserves a column for its check mark and moves every item's text right; measured from the open menu).
+Card content starts 12 pt right of the rows' text, which starts 14 pt from the panel's edge.
 
 ```
 ┌──────────────────────────────────────────────────┐
@@ -43,7 +74,7 @@ Card content starts at the same left edge as the text of the other menu items: 1
 - Each ring has a row: a dot in the ring's color, the label, and the used percent in a pill at the right (rounded, tinted with the percent's tone at 16% opacity, text in the tone color) so the value reads on any menu background. A window with a count (Copilot Premium Interactions) shows it in the same pill after the percent, a middle dot between: `63% · 6280/10000 credits`, or `63% · 120/300` when the count has no unit. Numbers are rounded to whole numbers, with no digit grouping. Used above the limit shows as is (`10320/10000`). A collapsed card's pills show the percent only.
 - Spacing: 14 pt side margin, 12 pt top and bottom, 20 pt text lines, 8 pt between rows, 14 pt between charts, 4 pt between a header and what follows. A chart's rows are vertically centered against its rings when they are shorter than the rings.
 - Under it: the reset time in the local time zone, a middle dot, and the time until it, for example `Oct 5, 3:20 PM · in 2 minutes`. Relative units: seconds, minutes, hours, days (`in 1 minute`, `in 3 hours`, `in 4 days`). A reset time in the past shows `resetting…`. A window with no reset time shows no second line.
-- The relative text is computed when the menu opens. It does not update while the menu stays open.
+- The relative text is computed when the panel opens, and again on each click in it and each finished run. There is no timer for it.
 
 ### Provider with several groups (Antigravity)
 
@@ -66,25 +97,25 @@ One chart per model group, stacked, each with its own group header and rings for
 
 ## Collapse a card
 
-- A chevron sits left of every card's title, always visible: down when expanded, right when collapsed. Clicking it toggles the card; the menu stays open, like the other card buttons. Clicking the title still pins.
+- A chevron sits left of every card's title, always visible: down when expanded, right when collapsed. Clicking it toggles the card; the panel stays open, like the other card buttons. Clicking the title still pins.
 - A collapsed card is one line: the chevron, the title, and one tinted pill per value at the right, in the same style as the rows. A provider with one chart shows a pill per ring row (at most 4); a provider with groups (Antigravity) shows each group's headline percent, in the worst tone of that group's rings. While the pointer is over the card, the buttons replace the pills; the pinned card's `Pinned` button always shows, with the pills left of it.
 - The account line (GitHub Copilot), `Loading…`, errors and notices such as `Usage limit reached` still show, so a collapsed card never hides a problem. Charts and rows are not drawn, and the card's vertical padding shrinks from 16 to 10 pt.
 - The state is saved by run id (user default `collapsedCards`) and kept across launches. It only changes the panel; the icon, pin and refresh are unaffected.
 
 ## Card order
 
-- Default order: Claude Code, Codex, Antigravity, GitHub Copilot (by provider file id `claude`, `codex`, `antigravity`, `copilot`); any other provider follows, in id order. Copilot accounts keep the order `gh` lists them. The Providers submenu and the icon's default pin follow the same order.
-- While the pointer is over a card, two outlined arrow buttons, `↑` and `↓`, show in its title row, left of **Hide**. Clicking one swaps the card with its nearest visible neighbor; the menu stays open. The top card has no `↑`; the bottom card has no `↓`. Hidden cards are stepped over and keep their place.
+- Default order: Claude Code, Codex, Antigravity, GitHub Copilot (by provider file id `claude`, `codex`, `antigravity`, `copilot`); any other provider follows, in id order. Copilot accounts keep the order `gh` lists them. The Providers section and the icon's default pin follow the same order.
+- While the pointer is over a card, two outlined arrow buttons, `↑` and `↓`, show in its title row, left of **Hide**. Clicking one swaps the card with its nearest visible neighbor; the panel stays open. The top card has no `↑`; the bottom card has no `↓`. Hidden cards are stepped over and keep their place.
 - The order is saved by run id (user default `cardOrder`). A card not in the saved list, such as a new Copilot account, goes after the saved ones in default order. Saved ids that no longer exist are ignored.
-- There is no drag and drop: an `NSMenu` cannot reorder by dragging.
+- There is no drag and drop.
 
 ## Hide a card
 
-- While the pointer is over a card, an outlined text button labeled `Hide` (same style, hover and press feedback as the pin) shows in its title row, left of the pin. Clicking it hides that card; the menu stays open.
+- While the pointer is over a card, an outlined text button labeled `Hide` (same style, hover and press feedback as the pin) shows in its title row, left of the pin. Clicking it hides that card; the panel stays open.
 - Hiding is per card: one Copilot account can be hidden while the other stays. It only removes the card from the panel. The provider keeps running, so it can still be pinned and shown in the icon, and the cycle of results is unaffected.
-- **Hidden Cards** submenu: one `Show <name>` item per hidden card that still exists. Choosing it shows the card again. The ids of hidden cards are kept across launches (user default `hiddenCards`); an id with no matching card (for example a removed account) is ignored and kept.
+- **Hidden Cards** section: one `Show <name>` row per hidden card that still exists. Clicking it shows the card again. The ids of hidden cards are kept across launches (user default `hiddenCards`); an id with no matching card (for example a removed account) is ignored and kept.
 - When every card is hidden the panel shows `All cards are hidden`.
-- This is different from the **Providers** submenu, which turns monitoring of a whole provider file on or off.
+- This is different from the **Providers** section, which turns monitoring of a whole provider file on or off.
 
 ## Pin
 
@@ -104,6 +135,9 @@ There is no cycle mode. The icon always shows exactly one pinned target (see [me
 ## Implementation notes
 
 - Card model, ring order, rows, relative-time text and default pin resolution live in `Sources/AIUsageCore/` with `CoreChecks` written first. The relative-time function takes `now` as an input.
-- `CardView` (`NSView`, set as `NSMenuItem.view`) draws the rings with Core Graphics and handles clicks. A click runs its action and the open menu is rebuilt in place, so the result shows without reopening it. A rebuilt card under the pointer starts hovered, so its buttons stay. System colors, so light and dark mode work.
-- Removing cycle mode also removes the 5 s icon cycle timer; only the 30 s schedule timer remains. Views are rebuilt each time the menu opens, and while it is open whenever a provider starts or finishes or a card button is clicked. Memory footprint must stay under 30 MB.
+- `PanelController` owns the window (a borderless non-activating `NSPanel` over an `NSVisualEffectView`), and keeps one `CardView` per card id and one `RowView` per row between updates, so each can animate from what it shows. `StatusController` builds the content and handles the actions.
+- `CardView` draws the rings with Core Graphics and handles clicks; `update` gives it a new card. System colors, so light and dark mode work.
+- The row list, stacking, placement, keyboard highlight and the in-between values of an animation are in `Sources/AIUsageCore/PanelModel.swift`, with checks in `Sources/CoreChecks/PanelChecks.swift`.
+- Animations use `NSAnimationContext` through `Motion` (`RowView.swift`); nothing runs while nothing moves. The click monitors exist only while the panel is open.
+- Removing cycle mode also removes the 5 s icon cycle timer; only the 30 s schedule timer remains. The window and its views are created when the panel opens and dropped when it closes. Memory footprint must stay under 30 MB.
 - Each card has an accessibility label summarizing the provider and its values.

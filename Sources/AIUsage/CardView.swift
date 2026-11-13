@@ -6,6 +6,8 @@ import AppKit
 /// Hide button that shows while the pointer is over the card calls `onHide` with the card's id, and its
 /// up and down buttons call `onMove` with the card's id and -1 or 1. The chevron left of the title calls
 /// `onToggle` with the card's id; a collapsed card shows its title and one pill per value, no charts.
+/// The panel keeps the view and gives it each new `Card` through `update`, so values move from what is
+/// on screen to the new ones.
 final class CardView: NSView {
     private static let minWidth: CGFloat = 300, chartSize: CGFloat = 76
     private static let thickness: CGFloat = 5, gap: CGFloat = 2, pinSize: CGFloat = 13, box: CGFloat = 19
@@ -39,15 +41,25 @@ final class CardView: NSView {
     /// The collapse chevron's column, left of the title.
     private static let chevronSpace: CGFloat = 14
 
-    private let card: Card
+    private(set) var card: Card
+    /// What the card showed before the last `update`: where texts and tones animate from. `nil`: from zero.
+    private var previous: Card?
+    /// The ring fractions on screen when the last `update` came: where the rings animate from.
+    private var startFractions: [[Double?]] = []
+    /// 0: `previous` is shown. 1: `card` is shown. A card that never animated is at 1.
+    @objc dynamic var progress: CGFloat = 1 { didSet { needsDisplay = true } }
+    /// 0: pointer away. 1: pointer over the card, its outline darker and its buttons shown.
+    @objc dynamic var hover: CGFloat = 0 { didSet { needsDisplay = true } }
+    /// The chevron: 0 points right (collapsed), 1 points down (expanded).
+    @objc dynamic var turn: CGFloat = 1 { didSet { needsDisplay = true } }
     private let width: CGFloat
     private let leading: CGFloat
     private let onPin: (String) -> Void
     private let onHide: (String) -> Void
     private let onMove: (String, Int) -> Void
     private let onToggle: (String) -> Void
-    private let collapsed: Bool
-    private let canMoveUp: Bool, canMoveDown: Bool
+    private var collapsed: Bool
+    private var canMoveUp: Bool, canMoveDown: Bool
     private var cardHovered = false
     private var targets: [PinTarget] = []
     private var hovered: Int?
@@ -103,10 +115,74 @@ final class CardView: NSView {
         self.onPin = onPin
         self.onHide = onHide
         super.init(frame: .zero)
-        let height = render(draw: false)
-        frame = NSRect(x: 0, y: 0, width: width, height: height)
+        turn = collapsed ? 0 : 1
+        // The panel animates the height; the drawing stays its own size at the top and is cut off below.
+        wantsLayer = true
+        layerContentsRedrawPolicy = .onSetNeedsDisplay
+        layerContentsPlacement = .topLeft
+        layer?.masksToBounds = true
+        frame = NSRect(x: 0, y: 0, width: width, height: fittingHeight)
         setAccessibilityRole(.group)
         setAccessibilityLabel(Self.summary(card))
+    }
+
+    /// The height the card needs as it is now.
+    var fittingHeight: CGFloat { render(draw: false) }
+
+    override class func defaultAnimation(forKey key: NSAnimatablePropertyKey) -> Any? {
+        ["progress", "hover", "turn"].contains(key) ? CABasicAnimation() : super.defaultAnimation(forKey: key)
+    }
+
+    /// Shows a new state. With `animated`, rings and percents move there from what is on screen, and
+    /// everything else crossfades. The caller sets the frame (see `fittingHeight`).
+    func update(card: Card, collapsed: Bool, canMoveUp: Bool, canMoveDown: Bool, animated: Bool) {
+        let cardChanged = card != self.card, collapsedChanged = collapsed != self.collapsed
+        guard cardChanged || collapsedChanged || canMoveUp != self.canMoveUp || canMoveDown != self.canMoveDown else { return }
+        if cardChanged {
+            startFractions = shownFractions
+            previous = self.card
+        }
+        (self.card, self.collapsed, self.canMoveUp, self.canMoveDown) = (card, collapsed, canMoveUp, canMoveDown)
+        setAccessibilityLabel(Self.summary(card))
+        needsDisplay = true
+        guard animated else {
+            (progress, turn) = (1, collapsed ? 0 : 1)
+            return
+        }
+        Motion.fade(self, collapsedChanged ? 0.22 : 0.15)
+        if cardChanged {
+            progress = 0
+            Motion.animate(0.4) { animator().progress = 1 }
+        }
+        if collapsedChanged { Motion.animate(0.22) { animator().turn = collapsed ? 0 : 1 } }
+    }
+
+    /// Sweeps the rings and counts the percents up from zero; played when the panel opens.
+    func playIntro() {
+        (previous, startFractions, progress) = (nil, [], 0)
+        Motion.animate(0.5) { animator().progress = 1 }
+    }
+
+    /// The ring fractions to draw now, per chart.
+    private var shownFractions: [[Double?]] {
+        Tween.fractions(from: startFractions, to: card, progress: Double(progress))
+    }
+
+    /// `text` on its way from the text `old` picks out of the previous card.
+    private func counted(_ text: String, _ old: (Card) -> String?) -> String {
+        progress < 1 ? Tween.percent(from: previous.flatMap(old), to: text, progress: Double(progress)) : text
+    }
+
+    /// `color(tone)` on its way from the tone `old` picks out of the previous card.
+    private func toned(_ tone: Tone, _ color: (Tone) -> NSColor, _ old: (Card) -> Tone?) -> NSColor {
+        guard progress < 1, let from = previous.flatMap(old), from != tone else { return color(tone) }
+        return color(from).blended(withFraction: progress, of: color(tone)) ?? color(tone)
+    }
+
+    /// The pointer may be over a card that moved under it without a mouse event; the panel calls this after it moves cards.
+    func refreshHover() {
+        guard let window else { return }
+        setCardHovered(bounds.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil)))
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -114,16 +190,18 @@ final class CardView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let outline = NSBezierPath(roundedRect: bounds.insetBy(dx: Self.sideGap + 0.5, dy: Self.outerGap + 0.5), xRadius: 10, yRadius: 10)
         outline.lineWidth = 1
-        (cardHovered ? NSColor.tertiaryLabelColor : NSColor.separatorColor).setStroke()
+        (NSColor.separatorColor.blended(withFraction: hover, of: .tertiaryLabelColor)
+            ?? (cardHovered ? .tertiaryLabelColor : .separatorColor)).setStroke()
         outline.stroke()
         _ = render(draw: true)
     }
 
-    /// The menu replaces cards while open; a new card under the pointer starts hovered, so its buttons stay.
+    /// A new card under the pointer starts hovered.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard let window else { return }
         cardHovered = bounds.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil))
+        hover = cardHovered ? 1 : 0
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -155,15 +233,15 @@ final class CardView: NSView {
 
     override func mouseEntered(with event: NSEvent) { setCardHovered(true, event) }
     override func mouseMoved(with event: NSEvent) { setCardHovered(true, event) }
-    override func mouseExited(with event: NSEvent) {
-        cardHovered = false
-        setState(hovered: nil, pressed: nil)
-        needsDisplay = true
-    }
+    override func mouseExited(with event: NSEvent) { setCardHovered(false) }
 
-    private func setCardHovered(_ value: Bool, _ event: NSEvent) {
-        if cardHovered != value { cardHovered = value; needsDisplay = true }
-        setState(hovered: target(at: event), pressed: pressed)
+    /// The outline and the buttons fade with `hover`; clicks follow `cardHovered` at once.
+    private func setCardHovered(_ value: Bool, _ event: NSEvent? = nil) {
+        if cardHovered != value {
+            cardHovered = value
+            Motion.animate(0.12) { animator().hover = value ? 1 : 0 }
+        }
+        setState(hovered: value ? event.flatMap(target(at:)) : nil, pressed: value ? pressed : nil)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -205,7 +283,9 @@ final class CardView: NSView {
         pin(card.pinned, key: card.pin, label: name,
             at: NSPoint(x: right - Self.pinWidth, y: y + (titleLine - Self.box) / 2),
             hit: NSRect(x: x, y: y, width: right - x, height: titleLine), draw: draw)
-        if collapsed, draw, !cardHovered { pills(right: right - (card.pinned ? Self.pinWidth + 6 : 0), y: y, height: titleLine) }
+        if collapsed, draw, hover < 1 {
+            faded(1 - hover) { pills(right: right - (card.pinned ? Self.pinWidth + 6 : 0), y: y, height: titleLine) }
+        }
         y += titleLine
         if let account = card.subtitle {
             text(account, font: Self.bodyFont, color: .secondaryLabelColor, at: NSPoint(x: titleX, y: y), height: Self.line - 4, draw: draw)
@@ -222,7 +302,7 @@ final class CardView: NSView {
         for (index, chart) in (collapsed ? [] : card.charts).enumerated() {
             y += index == 0 ? Self.medium : Self.large
             let top = y
-            drawChart(chart, in: NSRect(x: x, y: top, width: Self.chartSize, height: Self.chartSize), draw: draw)
+            drawChart(chart, index, in: NSRect(x: x, y: top, width: Self.chartSize, height: Self.chartSize), draw: draw)
             let columnX = x + Self.chartSize + Self.large
             let headerHeight = chart.title == nil ? 0 : Self.line + Self.small
             let rowsHeight = headerHeight + chart.rows.reduce(0) { $0 + Self.rowHeight($1) } - (chart.rows.isEmpty ? 0 : Self.medium)
@@ -236,8 +316,8 @@ final class CardView: NSView {
                 }
                 rowY += headerHeight
             }
-            for row in chart.rows {
-                drawRow(row, x: columnX, right: right, y: rowY, draw: draw)
+            for (rowIndex, row) in chart.rows.enumerated() {
+                drawRow(row, chart: index, index: rowIndex, x: columnX, right: right, y: rowY, draw: draw)
                 rowY += Self.rowHeight(row)
             }
             y = top + max(Self.chartSize, rowsHeight)
@@ -255,6 +335,17 @@ final class CardView: NSView {
         return y + edge + Self.outerGap
     }
 
+    /// Draws `body` at `alpha`.
+    private func faded(_ alpha: CGFloat, _ body: () -> Void) {
+        guard let context = NSGraphicsContext.current?.cgContext else { return body() }
+        context.saveGState()
+        context.setAlpha(alpha)
+        context.beginTransparencyLayer(auxiliaryInfo: nil)
+        body()
+        context.endTransparencyLayer()
+        context.restoreGState()
+    }
+
     /// The disclosure chevron left of the title: right-pointing when collapsed, down when expanded. Always drawn.
     private func chevron(at origin: NSPoint, height: CGFloat, draw: Bool) {
         let hit = NSRect(x: origin.x - 6, y: origin.y, width: Self.chevronSpace + 8, height: height)
@@ -263,9 +354,11 @@ final class CardView: NSView {
         guard draw else { return }
         let center = NSPoint(x: origin.x + 4, y: origin.y + height / 2)
         let path = NSBezierPath()
-        let points = collapsed ? [(-2, -4), (2, 0), (-2, 4)] : [(-4, -2), (0, 2), (4, -2)]
-        for (step, point) in points.enumerated() {
-            let p = NSPoint(x: center.x + CGFloat(point.0), y: center.y + CGFloat(point.1))
+        // The right-pointing shape, turned a quarter clockwise as `turn` goes to 1.
+        let angle = Double(turn) * .pi / 2
+        for (step, point) in [(-2.0, -4.0), (2, 0), (-2, 4)].enumerated() {
+            let p = NSPoint(x: center.x + CGFloat(point.0 * cos(angle) - point.1 * sin(angle)),
+                            y: center.y + CGFloat(point.0 * sin(angle) + point.1 * cos(angle)))
             step == 0 ? path.move(to: p) : path.line(to: p)
         }
         path.lineWidth = 1.5
@@ -278,11 +371,13 @@ final class CardView: NSView {
     /// A collapsed card's values, right-aligned to `right`, in the same tinted pills as the rows.
     private func pills(right: CGFloat, y: CGFloat, height: CGFloat) {
         var x = right
-        for pill in card.pills.reversed() {
-            let value = NSAttributedString(string: pill.text, attributes: [.font: Self.bodyFont, .foregroundColor: Self.valueColor(pill.tone)])
+        for (index, pill) in card.pills.enumerated().reversed() {
+            let old: (Card) -> CardPill? = { $0.pills.indices.contains(index) ? $0.pills[index] : nil }
+            let value = NSAttributedString(string: counted(pill.text) { old($0)?.text },
+                                           attributes: [.font: Self.bodyFont, .foregroundColor: toned(pill.tone, Self.valueColor) { old($0)?.tone }])
             let box = NSRect(x: x - value.size().width - 2 * Self.pillPadding, y: y + (height - Self.pillHeight) / 2,
                              width: value.size().width + 2 * Self.pillPadding, height: Self.pillHeight)
-            Self.color(pill.tone).withAlphaComponent(0.16).setFill()
+            toned(pill.tone, Self.color) { old($0)?.tone }.withAlphaComponent(0.16).setFill()
             NSBezierPath(roundedRect: box, xRadius: Self.pillHeight / 2, yRadius: Self.pillHeight / 2).fill()
             value.draw(at: NSPoint(x: box.minX + Self.pillPadding, y: box.midY - value.size().height / 2))
             x = box.minX - 6
@@ -295,18 +390,23 @@ final class CardView: NSView {
     }
 
     /// Dot in the ring's color, label, then the value on a tinted background at the right.
-    private func drawRow(_ row: CardRow, x: CGFloat, right: CGFloat, y: CGFloat, draw: Bool) {
+    private func drawRow(_ row: CardRow, chart: Int, index: Int, x: CGFloat, right: CGFloat, y: CGFloat, draw: Bool) {
+        let old: (Card) -> CardRow? = { card in
+            guard card.charts.indices.contains(chart), card.charts[chart].rows.indices.contains(index) else { return nil }
+            return card.charts[chart].rows[index]
+        }
         if draw, let index = row.ringIndex {
             shade(index).setFill()
             NSBezierPath(ovalIn: NSRect(x: x, y: y + (Self.line - 7) / 2, width: 7, height: 7)).fill()
         }
         text(row.label, font: Self.bodyFont, color: .labelColor, at: NSPoint(x: x + Self.dotColumn, y: y), height: Self.line, draw: draw)
         let pinSpace: CGFloat = row.pin == nil ? 0 : Self.pinWidth + 6
-        let value = NSAttributedString(string: row.percentText, attributes: [.font: Self.bodyFont, .foregroundColor: Self.valueColor(row.tone)])
+        let value = NSAttributedString(string: counted(row.percentText) { old($0)?.percentText },
+                                       attributes: [.font: Self.bodyFont, .foregroundColor: toned(row.tone, Self.valueColor) { old($0)?.tone }])
         let pill = NSRect(x: right - pinSpace - value.size().width - 2 * Self.pillPadding, y: y + (Self.line - Self.pillHeight) / 2,
                           width: value.size().width + 2 * Self.pillPadding, height: Self.pillHeight)
         if draw {
-            Self.color(row.tone).withAlphaComponent(0.16).setFill()
+            toned(row.tone, Self.color) { old($0)?.tone }.withAlphaComponent(0.16).setFill()
             NSBezierPath(roundedRect: pill, xRadius: Self.pillHeight / 2, yRadius: Self.pillHeight / 2).fill()
             value.draw(at: NSPoint(x: pill.minX + Self.pillPadding, y: pill.midY - value.size().height / 2))
         }
@@ -320,18 +420,20 @@ final class CardView: NSView {
         }
     }
 
-    private func drawChart(_ chart: CardChart, in box: NSRect, draw: Bool) {
+    private func drawChart(_ chart: CardChart, _ chartIndex: Int, in box: NSRect, draw: Bool) {
         guard draw else { return }
         let center = NSPoint(x: box.midX, y: box.midY)
-        for (index, ring) in chart.rings.enumerated() {
+        let fractions = shownFractions[chartIndex]
+        for index in chart.rings.indices {
             let radius = box.width / 2 - Self.thickness / 2 - CGFloat(index) * (Self.thickness + Self.gap)
             Self.arc(center: center, radius: radius, fraction: 1, color: .separatorColor)
-            if let fraction = ring.fraction, fraction > 0 {
+            if let fraction = fractions[index], fraction > 0 {
                 Self.arc(center: center, radius: radius, fraction: fraction, color: shade(index))
             }
         }
         let font = NSFont.menuFont(ofSize: 11)
-        let label = NSAttributedString(string: chart.center, attributes: [.font: font, .foregroundColor: NSColor.labelColor])
+        let text = counted(chart.center) { $0.charts.indices.contains(chartIndex) ? $0.charts[chartIndex].center : nil }
+        let label = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: NSColor.labelColor])
         let size = label.size()
         label.draw(at: NSPoint(x: center.x - size.width / 2, y: center.y - size.height / 2))
     }
@@ -398,7 +500,14 @@ final class CardView: NSView {
         let index = targets.count
         targets.append(PinTarget(rect: hit, box: box, key: key, label: label, kind: kind))
         let isPressed = pressed == index, isHovered = hovered == index
-        guard draw, cardHovered || pinned else { return }
+        guard draw, hover > 0 || pinned else { return }
+        guard pinned || hover == 1 else {
+            return faded(hover) { paint(box, title, pinned: pinned, isHovered: isHovered, isPressed: isPressed) }
+        }
+        paint(box, title, pinned: pinned, isHovered: isHovered, isPressed: isPressed)
+    }
+
+    private func paint(_ box: NSRect, _ title: NSAttributedString, pinned: Bool, isHovered: Bool, isPressed: Bool) {
         let shape = NSBezierPath(roundedRect: box.insetBy(dx: 0.5, dy: 0.5), xRadius: 5, yRadius: 5)
         if isPressed || isHovered {
             NSColor.labelColor.withAlphaComponent(isPressed ? 0.2 : 0.08).setFill()
