@@ -4,3 +4,7 @@ build/
 # CocoIndex Code (ccc)
 /.cocoindex_code/
 /.maestri/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
+.serena/
