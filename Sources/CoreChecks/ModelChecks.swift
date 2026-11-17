@@ -176,6 +176,9 @@ func iconChecks() {
     let loadingIcon = StatusIcons.icon(runs: [sampleRun("a", "A", "A", nil), copilot], pinned: nil)
     check("loadingPinShowsDashes", loadingIcon.top == "A" && loadingIcon.bottom == "--")
     check("noRunsPlaceholder", StatusIcons.icon(runs: [], pinned: "codex") == StatusIcons.placeholder)
+    check("cycleWraps", Pin.cycle(0, in: [codex, copilot]) == "codex" && Pin.cycle(1, in: [codex, copilot]) == "copilot"
+          && Pin.cycle(2, in: [codex, copilot]) == "codex" && Pin.cycle(0, in: []) == nil)
+    check("cycleEveryThreeSeconds", Pin.cycleSeconds == 3)
 
     let groupRun = sampleRun("antigravity", "Antigravity", "AGY", .success(Report(meters: [
         MeterReport(id: "Gemini Models", label: "Gemini Models", windows: [WindowReport(id: "w", label: "Weekly", usedPercent: 7)]),

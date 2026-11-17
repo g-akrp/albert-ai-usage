@@ -15,6 +15,8 @@ public enum MenuEntry: Equatable {
     case updated(String)
     /// How often every provider runs, in seconds: one of `Schedule.intervals`.
     case refreshInterval(Int)
+    /// Whether the menu bar steps through every provider.
+    case cycleIcon(Bool)
     case launchAtLogin(Bool)
     case openProvidersFolder
     case version(String)
@@ -49,7 +51,7 @@ public enum MenuModel {
     public static func entries(runs: [ProviderRun], pinned: String?, configErrors: [String],
                                providers: [ProviderToggle] = [], updated: String?,
                                launchAtLogin: Bool, version: String, hidden: Set<String> = [], order: [String] = [],
-                               refreshSeconds: Int = Schedule.standard, now: Date = Date(),
+                               refreshSeconds: Int = Schedule.standard, cycling: Bool = false, now: Date = Date(),
                                formatReset: (Date) -> String) -> [MenuEntry] {
         var entries: [MenuEntry] = []
         let pin = Pin.effective(pinned, in: runs)
@@ -72,7 +74,7 @@ public enum MenuModel {
         if !providers.isEmpty { entries.append(.providers(providers)) }
         let hiddenRuns = runs.filter { hidden.contains($0.id) }.map { HiddenCard(id: $0.id, name: $0.name) }
         if !hiddenRuns.isEmpty { entries.append(.hiddenCards(hiddenRuns)) }
-        entries += [.launchAtLogin(launchAtLogin), .openProvidersFolder, .separator,
+        entries += [.cycleIcon(cycling), .launchAtLogin(launchAtLogin), .openProvidersFolder, .separator,
                      .version("AI Usage \(version)"), .credit(before: "Built with", after: "by g.akrp"), .quit]
         return entries
     }

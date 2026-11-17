@@ -28,7 +28,7 @@ Click the icon to open the panel, one card per provider:
 - **Groups.** A provider with model groups, like Antigravity, gets one chart per group.
 - **Collapse.** Click the chevron left of a title to shrink a card to one line with its percent pills. It stays collapsed until you expand it.
 - **Pin, Hide, and order.** Hover a card for **Pin**, **Hide**, and `↑` `↓` arrows that move it. The pinned provider or limit is what the menu bar icon shows. Default order: Claude Code, Codex, Antigravity, Copilot.
-- **Menu.** Under the cards: **Refresh Now**, **Providers**, **Launch at Login**, and **Quit**.
+- **Menu.** Under the cards: **Refresh Now**, **Providers**, **Cycle Menu Bar**, **Launch at Login**, and **Quit**.
 
 ## Requirements
 
@@ -69,6 +69,7 @@ This builds the app, signs it ad hoc, and copies it to `~/Applications`.
 - Click the icon for the cards. **Refresh Now** (⌘R) reruns every provider.
 - **Providers** turns each provider on or off. The choice is kept across launches.
 - **Hidden Cards** brings back a card you hid.
+- **Cycle Menu Bar** steps the menu bar icon through the shown providers in card order, 3 seconds each (CLD → CDX → GHC). Its timer runs only while it is on.
 - **Launch at Login** starts the app when you log in.
 - Every provider refreshes every 5 minutes; **Refresh Every** in the panel changes that to 10 s, 30 s or 1 min. A failing provider retries after 1, 2, 4, … minutes, at most every 30.
 

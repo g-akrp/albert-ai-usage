@@ -46,6 +46,10 @@ func panelChecks() {
     check("rowsIntervalChoices", timedOpen.dropFirst().map(\.kind) == Schedule.intervals.map { .interval(seconds: $0) })
     check("rowsIntervalTitles", timedOpen.dropFirst().map(\.title) == ["10 s", "30 s", "1 min", "5 min"])
     check("rowsIntervalChecked", timedOpen.dropFirst().map(\.checked) == [false, false, true, false] && timedOpen[1].indented)
+    let cycle = PanelModel.rows([.cycleIcon(true)], expanded: [], refreshing: false)
+    check("rowsCycleChecked", cycle.count == 1 && cycle[0].kind == .cycleIcon && cycle[0].title == "Cycle Menu Bar" && cycle[0].checked == true)
+    check("entriesHaveCycle", MenuModel.entries(runs: [], pinned: nil, configErrors: [], updated: nil, launchAtLogin: false, version: "1",
+                                                cycling: true, formatReset: { _ in "" }).contains(.cycleIcon(true)))
     check("entriesHaveInterval", MenuModel.entries(runs: [], pinned: nil, configErrors: [], updated: nil, launchAtLogin: false, version: "1",
                                                    refreshSeconds: 30, formatReset: { _ in "" }).contains(.refreshInterval(30)))
 

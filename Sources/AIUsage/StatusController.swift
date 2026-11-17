@@ -80,6 +80,15 @@ final class StatusController: NSObject {
         set { defaults.set(newValue, forKey: "refreshSeconds") }
     }
 
+    private var cycling: Bool {
+        get { defaults.bool(forKey: "cycleIcon") }
+        set { defaults.set(newValue, forKey: "cycleIcon") }
+    }
+
+    /// Steps the menu bar through the providers while Cycle Menu Bar is on; runs only then.
+    private var cycleTimer: Timer?
+    private var cycleStep = 0
+
     private var pinned: String? {
         get { defaults.string(forKey: "pinnedProvider") }
         set { defaults.set(newValue, forKey: "pinnedProvider") }
@@ -99,6 +108,7 @@ final class StatusController: NSObject {
         poller.interval = refreshSeconds
         poller.onChange = { [weak self] in self?.pollerChanged() }
         updateIcons()
+        updateCycleTimer()
         poller.start()
 
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -134,6 +144,7 @@ final class StatusController: NSObject {
     private func updateIcons() {
         let effective = Pin.effective(pinned, in: visibleRuns)
         if let effective, effective != pinned { pinned = effective }
+        let shown = cycling ? Pin.cycle(cycleStep, in: cycleRuns) ?? effective : effective
         guard let button = statusItem.button else { return }
         let alpha: CGFloat = manualRefresh ? 0.5 : 1
         if button.alphaValue != alpha {
@@ -142,12 +153,28 @@ final class StatusController: NSObject {
                 button.animator().alphaValue = alpha
             }
         }
-        let spec = StatusIcons.icon(runs: visibleRuns, pinned: effective)
+        let spec = StatusIcons.icon(runs: visibleRuns, pinned: shown)
         guard spec != icon else { return }
         icon = spec
         button.image = Self.image(spec)
         button.toolTip = spec.accessibility
         button.setAccessibilityLabel(spec.accessibility)
+    }
+
+    private var cycleRuns: [ProviderRun] { CardOrder.sorted(visibleRuns, saved: cardOrder) }
+
+    private func updateCycleTimer() {
+        cycleTimer?.invalidate()
+        cycleTimer = nil
+        cycleStep = 0
+        guard cycling else { return }
+        let timer = Timer(timeInterval: Pin.cycleSeconds, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.cycleStep += 1
+            self.updateIcons()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        cycleTimer = timer
     }
 
     /// Draws the pixel icon at 2 points per font pixel, so it stays sharp on any display.
@@ -199,7 +226,7 @@ final class StatusController: NSObject {
                                            next: poller.nextRefresh.flatMap { RelativeTime.countdown(until: $0, now: Date()) },
                                            formatTime: timeFormatter.string(from:)),
             launchAtLogin: SMAppService.mainApp.status == .enabled,
-            version: AppVersion.current, hidden: hiddenCards, order: cardOrder, refreshSeconds: refreshSeconds, formatReset: { MenuModel.resetText($0, now: Date()) })
+            version: AppVersion.current, hidden: hiddenCards, order: cardOrder, refreshSeconds: refreshSeconds, cycling: cycling, formatReset: { MenuModel.resetText($0, now: Date()) })
         return PanelContent(cards: PanelModel.cards(entries), collapsed: collapsedCards,
                             rows: PanelModel.rows(entries, expanded: expandedSections, refreshing: poller.isRunning))
     }
@@ -221,6 +248,10 @@ final class StatusController: NSObject {
         case .hiddenCards: expandedSections.formSymmetricDifference([PanelModel.hiddenSection])
         case .provider(let id): toggleProvider(id)
         case .showCard(let id): hiddenCards.remove(id)
+        case .cycleIcon:
+            cycling.toggle()
+            updateCycleTimer()
+            updateIcons()
         case .launchAtLogin: toggleLaunchAtLogin()
         case .openProvidersFolder:
             panel.close()

@@ -180,6 +180,14 @@ public struct ProviderRun: Equatable {
 public enum Pin {
     public static func key(run: String, meter: String) -> String { "\(run)|\(meter)" }
 
+    /// Seconds each provider stays in the menu bar while it cycles.
+    public static let cycleSeconds: TimeInterval = 3
+
+    /// The pin of the provider shown at `step` of a cycle through `runs`, wrapping around.
+    public static func cycle(_ step: Int, in runs: [ProviderRun]) -> String? {
+        runs.isEmpty ? nil : CardModel.titlePin(runs[step % runs.count])
+    }
+
     /// The pinned run and meter id, if the run exists. A pin on a provider file whose runs are now
     /// per account (`copilot`) falls back to its first account.
     public static func resolve(_ pin: String?, in runs: [ProviderRun]) -> (run: ProviderRun, meter: String?)? {
