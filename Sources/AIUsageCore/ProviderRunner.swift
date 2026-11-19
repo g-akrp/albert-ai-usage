@@ -31,9 +31,10 @@ public struct ProviderRunner {
             let source = config.source.replacingAccount(with: account)
             let result = Result { Mapper.apply(config.map, to: try capture(source)) }
                 .mapError { $0 as? ProviderFailure ?? ProviderFailure(String(describing: $0)) }
-            // Several accounts share a brand color, so the label's last letter becomes the account number.
-            let label = accounts.count > 1 && index < 9
+            // Several accounts share a brand color, so the label's last letter becomes the account number unless mapped.
+            let fallback = accounts.count > 1 && index < 9
                 ? String(config.iconLabel.prefix(2)) + String(index + 1) : config.iconLabel
+            let label = (try? result.get())?.iconLabel ?? fallback
             return ProviderRun(id: "\(config.id):\(account)", name: "\(config.name) · \(account)", iconLabel: label,
                                iconColor: config.iconColor, result: result, configId: config.id,
                                providerName: config.name, account: account)

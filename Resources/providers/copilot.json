@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "copilot",
-  "revision": 5,
+  "revision": 6,
   "name": "GitHub Copilot",
   "iconLabel": "GHC",
   "iconColor": "8957E5",
@@ -32,6 +32,14 @@
   },
   "map": {
     "plan": { "path": "/copilot_plan" },
+    "iconLabel": {
+      "path": "/copilot_plan",
+      "names": {
+        "individual": "GHP",
+        "business": "GHB",
+        "enterprise": "GHB"
+      }
+    },
     "meters": [
       {
         "select": "/quota_snapshots/chat",

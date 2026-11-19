@@ -98,6 +98,7 @@ Paths are JSON Pointers such as `/rate_limits/five_hour`, relative to the value 
 | `root` | Where to start in the output. Default: the whole document. |
 | `available` | `{ "path": ... }` to a boolean. `false` shows "Plan limits don't apply to this account". |
 | `plan` | `{ "path": ..., "names": { "prolite": "Pro Lite" } }` to a string. `names` is optional, up to 32 display names. |
+| `iconLabel` | Optional `{ "path": ..., "names": { "individual": "GHP" } }`. Maps a value in the answer to a menu bar icon label; unknown values fall back to the default label. |
 | `access` | `{ "path": ... }` to a boolean. `false` shows "Usage limit reached". |
 | `meters` | 1 to 16 meter specs. |
 

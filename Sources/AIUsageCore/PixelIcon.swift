@@ -170,7 +170,8 @@ public struct ProviderRun: Equatable {
     }
 
     public init(config: ProviderConfig, result: Result<Report, ProviderFailure>? = nil) {
-        self.init(id: config.id, name: config.name, iconLabel: config.iconLabel, iconColor: config.iconColor,
+        let label = result.flatMap { try? $0.get() }?.iconLabel ?? config.iconLabel
+        self.init(id: config.id, name: config.name, iconLabel: label, iconColor: config.iconColor,
                   result: result)
     }
 }

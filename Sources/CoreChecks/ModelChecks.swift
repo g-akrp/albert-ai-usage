@@ -47,6 +47,11 @@ func configChecks() {
         == "/source/args/1: expected a string")
     check("rejectsUnknownSourceType", error(minimal.replacingOccurrences(of: "\"command\"", with: "\"shell\""))
         .hasPrefix("/source/type"))
+    check("rejectsIconLabelWithoutNames", error(minimal.replacingOccurrences(of: #""meters": []"#,
+        with: #""iconLabel": {"path": "/plan"}, "meters": []"#)).hasPrefix("/map/iconLabel/names"))
+    let copilotLabels = bundledConfig("copilot")?.map.iconLabel
+    check("copilotIconLabelMap", copilotLabels?.path == "/copilot_plan"
+        && copilotLabels?.names == ["individual": "GHP", "business": "GHB", "enterprise": "GHB"])
 }
 
 func mappingChecks() {
@@ -91,6 +96,7 @@ func mappingChecks() {
     """#))
     check("copilotMeters", copilotReport.meters.map(\.label) == ["Completions", "Premium Interactions"])
     check("copilotRemainingPercent", copilotReport.meters.last?.windows.first?.usedPercent == 59.75)
+    check("copilotBusinessIconLabel", copilotReport.iconLabel == "GHB")
     // Copilot Free: premium interactions have no quota (entitlement 0, percent_remaining 0), not 100% used.
     let freeReport = Mapper.apply(copilot.map, to: json(#"""
     {"copilot_plan": "individual", "quota_snapshots": {
@@ -99,6 +105,11 @@ func mappingChecks() {
       "premium_interactions": {"percent_remaining": 0.0, "has_quota": false, "unlimited": false, "entitlement": 0}}}
     """#))
     check("copilotSkipsNoQuota", freeReport.meters.map(\.id) == ["chat", "completions"] && freeReport.maxPercent == 0)
+    check("copilotIndividualIconLabel", freeReport.iconLabel == "GHP")
+    let enterpriseReport = Mapper.apply(copilot.map, to: json(#"{"copilot_plan": "enterprise", "quota_snapshots": {}}"#))
+    check("copilotEnterpriseIconLabel", enterpriseReport.iconLabel == "GHB")
+    let unknownPlanReport = Mapper.apply(copilot.map, to: json(#"{"copilot_plan": "other", "quota_snapshots": {}}"#))
+    check("copilotUnknownPlanIconLabelNil", unknownPlanReport.iconLabel == nil)
 
     // Copilot Business out of premium requests: has_quota is false but the entitlement is not 0, so it is 100% used.
     let exhausted = Mapper.apply(copilot.map, to: json(#"""

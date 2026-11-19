@@ -147,6 +147,28 @@ func accountChecks() {
     let one = runner.runAll(accountsConfig(#"echo '{"hosts": {"h": [{"login": "alice", "state": "success"}]}}'"#))
     check("singleAccountKeepsLabel", one.map(\.iconLabel) == ["GHC"] && one.map(\.id) == ["multi:alice"])
 
+    let mappedPlans = try! config(#"""
+    {"schemaVersion": 1, "id": "multi", "revision": 1, "name": "Multi", "iconLabel": "GHC",
+     "accounts": {"source": {"type": "command", "executable": "/bin/sh",
+                             "args": ["-c", "echo '{\"hosts\": {\"h\": [{\"login\": \"p\", \"state\": \"success\"}, {\"login\": \"b\", \"state\": \"success\"}, {\"login\": \"e\", \"state\": \"success\"}, {\"login\": \"u\", \"state\": \"success\"}, {\"login\": \"f\", \"state\": \"success\"}]}}'"]},
+                  "each": "/hosts/h", "id": "/login", "match": [{"path": "/state", "equals": "success"}]},
+     "source": {"type": "command", "executable": "/bin/sh",
+                "args": ["-c", "case \"$1\" in p) echo '{\"plan\": \"individual\", \"used\": 10}';; b) echo '{\"plan\": \"business\", \"used\": 20}';; e) echo '{\"plan\": \"enterprise\", \"used\": 30}';; u) echo '{\"plan\": \"mystery\", \"used\": 40}';; *) exit 1;; esac", "sh", "${account}"]},
+     "map": {"iconLabel": {"path": "/plan", "names": {"individual": "GHP", "business": "GHB", "enterprise": "GHB"}},
+             "meters": [{"id": "m", "label": {"text": "M"}, "windows": [{"id": "w", "used": {"path": "/used", "as": "percent"}}]}]}}
+    """#)
+    let planRuns = runner.runAll(mappedPlans)
+    check("accountsMappedIconLabels", planRuns.map(\.iconLabel) == ["GHP", "GHB", "GHB", "GH4", "GH5"])
+
+    let singleMapped = try! config(#"""
+    {"schemaVersion": 1, "id": "single", "revision": 1, "name": "Single", "iconLabel": "GHC",
+     "source": {"type": "command", "executable": "/bin/sh", "args": ["-c", "echo '{\"plan\": \"individual\", \"used\": 10}'"]},
+     "map": {"iconLabel": {"path": "/plan", "names": {"individual": "GHP"}},
+             "meters": [{"id": "m", "label": {"text": "M"}, "windows": [{"id": "w", "used": {"path": "/used", "as": "percent"}}]}]}}
+    """#)
+    check("singleProviderMappedIconLabel", runner.runAll(singleMapped).map(\.iconLabel) == ["GHP"])
+    check("loadingRunKeepsDefaultIconLabel", ProviderRun(config: singleMapped).iconLabel == "GHC")
+
     let broken = runner.runAll(accountsConfig("exit 1"))
     check("accountListFailure", broken.map(\.id) == ["multi"]
         && broken.first.map { if case .failure(let f)? = $0.result { return f.message.hasPrefix("could not list accounts") } else { return false } } == true)

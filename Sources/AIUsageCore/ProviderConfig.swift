@@ -123,6 +123,8 @@ public struct MapSpec {
     public let root: String?
     public let available: String?
     public let plan: PlanSpec?
+    /// Project extension: maps a response value at `path` to a menu bar icon label.
+    public let iconLabel: (path: String, names: [String: String])?
     public let access: String?
     public let meters: [MeterSpec]
 }
@@ -281,6 +283,9 @@ extension ProviderConfig {
             available: try p.optional("available").map { try $0.string("path") },
             plan: try p.optional("plan").map {
                 PlanSpec(path: try $0.string("path"), names: try $0.optional("names").map { try $0.stringMap() } ?? [:])
+            },
+            iconLabel: try p.optional("iconLabel").map {
+                (try $0.string("path"), try $0.child("names").stringMap())
             },
             access: try p.optional("access").map { try $0.string("path") },
             meters: try p.child("meters").elements().map { m in

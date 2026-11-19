@@ -3,12 +3,13 @@ import Foundation
 /// What one provider run produced, independent of the provider's own JSON shape.
 public struct Report: Equatable {
     public var plan: String?
+    public var iconLabel: String?
     public var available: Bool?
     public var access: Bool?
     public var meters: [MeterReport]
 
-    public init(plan: String? = nil, available: Bool? = nil, access: Bool? = nil, meters: [MeterReport]) {
-        (self.plan, self.available, self.access, self.meters) = (plan, available, access, meters)
+    public init(plan: String? = nil, iconLabel: String? = nil, available: Bool? = nil, access: Bool? = nil, meters: [MeterReport]) {
+        (self.plan, self.iconLabel, self.available, self.access, self.meters) = (plan, iconLabel, available, access, meters)
     }
 
     /// The most urgent number: the highest used percent across every window.
@@ -93,6 +94,11 @@ public enum Mapper {
         let plan = map.plan.flatMap { spec in
             JSON.idString(JSON.resolve(root, spec.path)).map { spec.names[$0] ?? $0 }
         }
+        let iconLabel = map.iconLabel.flatMap { spec in
+            JSON.idString(JSON.resolve(root, spec.path))
+                .flatMap { spec.names[$0] }
+                .flatMap { $0.isEmpty ? nil : $0 }
+        }
         var meters: [MeterReport] = []
         for spec in map.meters {
             for meter in mapMeter(spec, root, answer: root) where !meters.contains(where: { $0.id == meter.id }) {
@@ -101,6 +107,7 @@ public enum Mapper {
         }
         return Report(
             plan: plan,
+            iconLabel: iconLabel,
             available: map.available.flatMap { JSON.bool(JSON.resolve(root, $0)) },
             access: map.access.flatMap { JSON.bool(JSON.resolve(root, $0)) },
             meters: meters)
