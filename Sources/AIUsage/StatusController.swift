@@ -135,8 +135,18 @@ final class StatusController: NSObject {
 
     private func pollerChanged() {
         if manualRefresh, !poller.isRunning { manualRefresh = false }
+        writeSnapshot()
         updateIcons()
         refreshPanel()
+    }
+
+    private func writeSnapshot() {
+        do {
+            let data = try UsageSnapshot(runs: visibleRuns, now: Date(), intervalSeconds: poller.interval).encoded()
+            try SnapshotFile.write(data)
+        } catch {
+            NSLog("AIUsage: failed to write snapshot: %@", String(describing: error))
+        }
     }
 
     // MARK: Menu bar icon

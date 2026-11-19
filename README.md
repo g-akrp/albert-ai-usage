@@ -78,6 +78,26 @@ Upgrading from older versions:
 - Before 1.3.0 the app was called Albert AI Usage (`AlbertAIUsage.app`). Quit and delete it after installing AI Usage; your pin and provider switches carry over. Turn **Launch at Login** on again.
 - If you used the SwiftBar plugin, remove its `albert-usage.30s.sh` symlink from SwiftBar's plugin folder.
 
+## MCP
+
+Run the app binary with `--mcp` to expose one stdio MCP tool, `usage`, for agents choosing where to route work. MCP mode only reads `~/Library/Application Support/AIUsage/usage.json`, which the running menu bar app updates after each poll — it never runs provider CLIs or reads credentials.
+
+Register with Claude Code or Codex (replace `/Applications` with `~/Applications` if installed via `scripts/build-app.sh`):
+
+```
+claude mcp add aiusage -- "/Applications/AI Usage.app/Contents/MacOS/AIUsage" --mcp
+codex mcp add aiusage -- "/Applications/AI Usage.app/Contents/MacOS/AIUsage" --mcp
+```
+
+`usage` returns JSON with:
+
+- `generatedAt`: ISO 8601 timestamp of the snapshot.
+- `ageSeconds`: seconds since `generatedAt`.
+- `stale`: `true` when `ageSeconds` exceeds 3× the app's current refresh interval.
+- `providers`: sorted most `remainingPercent` first (`ok`, then `loading`, then `error`; providers without a percent sort after numbered ones within a status). Each entry has `id`, `name`, `status` (`ok | error | loading`), optional `message`, `remainingPercent` and `resetsAt` of its tightest window, and all `windows`. Providers that need login report `status: "error"` with the provider's message.
+
+The menu bar app must be running so the snapshot stays current; if `usage.json` is missing, `usage` returns an error result.
+
 ## Privacy
 
 - Each provider runs as its own CLI, using that CLI's login. AI Usage never reads or stores credentials.

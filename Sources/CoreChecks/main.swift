@@ -20,6 +20,9 @@ pinChecks()
 toggleChecks()
 cardChecks()
 panelChecks()
+usageChecks()
+mcpChecks()
+snapshotFileChecks()
 
 if failures.isEmpty {
     print("ALL PASS")
