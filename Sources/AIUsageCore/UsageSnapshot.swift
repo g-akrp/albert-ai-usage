@@ -1,13 +1,27 @@
 import Foundation
 
+public struct UsageCount: Codable, Equatable {
+    public let used: Double
+    public let limit: Double
+    public let unit: String?
+
+    public init(used: Double, limit: Double, unit: String? = nil) {
+        (self.used, self.limit, self.unit) = (used, limit, unit)
+    }
+}
+
 public struct UsageWindow: Codable, Equatable {
     public let id: String
     public let label: String?
     public let remainingPercent: Double?
     public let resetsAt: Date?
+    public let durationSeconds: Int?
+    public let count: UsageCount?
 
-    public init(id: String, label: String? = nil, remainingPercent: Double? = nil, resetsAt: Date? = nil) {
-        (self.id, self.label, self.remainingPercent, self.resetsAt) = (id, label, remainingPercent, resetsAt)
+    public init(id: String, label: String? = nil, remainingPercent: Double? = nil, resetsAt: Date? = nil,
+                durationSeconds: Int? = nil, count: UsageCount? = nil) {
+        (self.id, self.label, self.remainingPercent, self.resetsAt, self.durationSeconds, self.count) =
+            (id, label, remainingPercent, resetsAt, durationSeconds, count)
     }
 }
 
@@ -78,6 +92,15 @@ public struct UsageSnapshot: Codable, Equatable {
                 if let label = w.label { wd["label"] = label }
                 if let remaining = w.remainingPercent { wd["remainingPercent"] = remaining }
                 if let resetsAt = w.resetsAt { wd["resetsAt"] = fmt.string(from: resetsAt) }
+                if let duration = w.durationSeconds { wd["durationSeconds"] = duration }
+                if let fraction = WindowReport.elapsedFraction(resetsAt: w.resetsAt, durationSeconds: w.durationSeconds, at: now) {
+                    wd["elapsedPercent"] = (fraction * 1000).rounded() / 10
+                }
+                if let count = w.count {
+                    var cd: [String: Any] = ["used": count.used, "limit": count.limit]
+                    if let unit = count.unit { cd["unit"] = unit }
+                    wd["count"] = cd
+                }
                 return wd
             }
             return dict
@@ -105,16 +128,48 @@ public struct UsageSnapshot: Codable, Equatable {
                         id: flat && multiMeter ? meter.id : w.id,
                         label: w.label ?? (flat ? meter.label : nil),
                         remainingPercent: w.usedPercent.map { max(0, 100 - $0) },
-                        resetsAt: w.resetsAt)
+                        resetsAt: w.resetsAt,
+                        durationSeconds: w.durationSeconds,
+                        count: w.count.map { UsageCount(used: $0.used, limit: $0.limit, unit: $0.unit) })
                 }
             }
             let tightest = windows.compactMap { w in w.remainingPercent.map { (w, $0) } }
                 .min { $0.1 < $1.1 }?.0
             return UsageProvider(
                 id: run.id, name: run.name, status: "ok",
+                message: run.staleError.map { "Stale: \($0)" },
                 remainingPercent: tightest?.remainingPercent, resetsAt: tightest?.resetsAt,
                 windows: windows)
         }
+    }
+
+    public static func cliJSON(load: () throws -> Data, now: Date = Date()) -> (output: String, exitCode: Int32) {
+        let data: Data
+        do {
+            data = try load()
+        } catch {
+            let msg = SnapshotFile.isNotFound(error) ? SnapshotFile.missingMessage : error.localizedDescription
+            return (encodeErrorJSON(msg), 1)
+        }
+        do {
+            let snapshot = try decode(data)
+            let payload = snapshot.view(now: now)
+            let jsonData = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
+            guard let json = String(data: jsonData, encoding: .utf8) else {
+                return (encodeErrorJSON("Failed to encode usage snapshot"), 1)
+            }
+            return (json, 0)
+        } catch {
+            return (encodeErrorJSON(error.localizedDescription), 1)
+        }
+    }
+
+    private static func encodeErrorJSON(_ message: String) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: ["error": message], options: [.sortedKeys, .withoutEscapingSlashes]),
+              let json = String(data: data, encoding: .utf8) else {
+            return #"{"error":"Failed to encode error"}"#
+        }
+        return json
     }
 
     private static func rank(_ status: String) -> Int {

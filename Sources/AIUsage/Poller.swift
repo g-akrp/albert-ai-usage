@@ -32,7 +32,8 @@ final class Poller {
         guard !isRunning else { return nil }
         return order.compactMap { id -> Date? in
             guard !disabled.contains(id), let state = states[id] else { return nil }
-            return state.started + Schedule.delay(interval: interval, failures: state.failures)
+            return Schedule.nextRun(started: state.started, interval: interval, failures: state.failures,
+                                    resetsAt: resetDate(for: id, after: state.started))
         }.min()
     }
 
@@ -84,6 +85,14 @@ final class Poller {
         reloadEnvironment()
     }
 
+    /// Reruns a single provider without reloading the login shell or other providers.
+    func refresh(configId: String) {
+        guard let state = states[configId], !state.running, !disabled.contains(configId) else { return }
+        states[configId]?.started = .distantPast
+        states[configId]?.failures = 0
+        tick()
+    }
+
     /// Reads the login shell off the main thread, then swaps in a runner with that environment and ticks.
     private func reloadEnvironment() {
         guard !reloadingEnvironment else { return }
@@ -109,7 +118,8 @@ final class Poller {
         var started = false
         for id in order where !disabled.contains(id) {
             guard let state = states[id], !state.running, let config = configs[id],
-                  Schedule.isDue(started: state.started, interval: interval, failures: state.failures, now: now) else { continue }
+                  Schedule.isDue(started: state.started, interval: interval, failures: state.failures,
+                                 now: now, resetsAt: resetDate(for: id, after: state.started)) else { continue }
             states[id]?.running = true
             states[id]?.started = now
             started = true
@@ -121,6 +131,10 @@ final class Poller {
         if started { onChange?() }
     }
 
+    private func resetDate(for configId: String, after started: Date) -> Date? {
+        Schedule.nextReset(in: runs.filter { $0.configId == configId }, after: started)
+    }
+
     /// Replaces the provider's runs (one per account) in place.
     private func finish(_ config: ProviderConfig, _ results: [ProviderRun]) {
         guard var state = states[config.id] else { return }  // removed while it ran
@@ -128,9 +142,11 @@ final class Poller {
         let failed = results.allSatisfy { if case .failure = $0.result { return true } else { return false } }
         state.failures = failed ? state.failures + 1 : 0
         states[config.id] = state
+        let previous = runs.filter { $0.configId == config.id }
+        let merged = ProviderRun.merging(previous: previous, latest: results)
         let index = runs.firstIndex { $0.configId == config.id } ?? runs.endIndex
         runs.removeAll { $0.configId == config.id }
-        runs.insert(contentsOf: results, at: min(index, runs.endIndex))
+        runs.insert(contentsOf: merged, at: min(index, runs.endIndex))
         lastUpdate = Date()
         onChange?()
     }

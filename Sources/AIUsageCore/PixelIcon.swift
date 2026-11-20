@@ -94,6 +94,15 @@ public enum PixelFont {
 }
 
 /// Which icons the menu bar shows.
+public enum MenuBarMode: String, Equatable {
+    case pinned, cycle, urgent
+
+    public static func resolve(stored: String?, legacyCycle: Bool) -> MenuBarMode {
+        if let stored, let mode = MenuBarMode(rawValue: stored) { return mode }
+        return legacyCycle ? .cycle : .pinned
+    }
+}
+
 public enum StatusIcons {
     public static let green = RGB(52, 199, 89), orange = RGB(255, 149, 0), red = RGB(255, 59, 48)
     public static let placeholder = IconSpec(top: "AI", bottom: "--", topColor: .gray, bottomColor: .gray,
@@ -159,20 +168,51 @@ public struct ProviderRun: Equatable {
     public let providerName: String
     /// The account this run is for, when the provider runs once per account.
     public let account: String?
+    /// Last transient error message when retaining a prior successful report.
+    public var staleError: String?
 
     public init(id: String, name: String, iconLabel: String, iconColor: RGB,
                 result: Result<Report, ProviderFailure>? = nil, configId: String? = nil,
-                providerName: String? = nil, account: String? = nil) {
+                providerName: String? = nil, account: String? = nil, staleError: String? = nil) {
         (self.id, self.name, self.iconLabel, self.iconColor, self.result) = (id, name, iconLabel, iconColor, result)
         self.configId = configId ?? id
         self.providerName = providerName ?? name
         self.account = account
+        self.staleError = staleError
     }
 
-    public init(config: ProviderConfig, result: Result<Report, ProviderFailure>? = nil) {
+    public init(config: ProviderConfig, result: Result<Report, ProviderFailure>? = nil, staleError: String? = nil) {
         let label = result.flatMap { try? $0.get() }?.iconLabel ?? config.iconLabel
         self.init(id: config.id, name: config.name, iconLabel: label, iconColor: config.iconColor,
-                  result: result)
+                  result: result, staleError: staleError)
+    }
+
+    /// Merges a provider's latest runs with its previous runs, keeping prior successful reports
+    /// marked with `staleError` across transient failures.
+    public static func merging(previous: [ProviderRun], latest: [ProviderRun]) -> [ProviderRun] {
+        if latest.count == 1,
+           case .failure(let err)? = latest[0].result,
+           latest[0].id == latest[0].configId {
+            let priorGood = previous.compactMap { prev -> ProviderRun? in
+                guard prev.configId == latest[0].configId, case .success? = prev.result else { return nil }
+                var kept = prev
+                kept.staleError = err.message
+                return kept
+            }
+            if !priorGood.isEmpty { return priorGood }
+        }
+        return latest.map { run in
+            var copy = run
+            if case .failure(let err)? = run.result,
+               let prev = previous.first(where: { $0.id == run.id }),
+               case .success? = prev.result {
+                var kept = prev
+                kept.staleError = err.message
+                return kept
+            }
+            copy.staleError = nil
+            return copy
+        }
     }
 }
 
@@ -187,6 +227,33 @@ public enum Pin {
     /// The pin of the provider shown at `step` of a cycle through `runs`, wrapping around.
     public static func cycle(_ step: Int, in runs: [ProviderRun]) -> String? {
         runs.isEmpty ? nil : CardModel.titlePin(runs[step % runs.count])
+    }
+
+    /// Shown runs in card order, excluding hidden cards.
+    public static func cycleCandidates(_ runs: [ProviderRun], order: [String], hidden: Set<String>) -> [ProviderRun] {
+        CardOrder.sorted(runs, saved: order).filter { !hidden.contains($0.id) }
+    }
+
+    /// Pin of the shown provider (or grouped meter) with the highest used percent.
+    public static func mostUrgent(in runs: [ProviderRun], order: [String], hidden: Set<String>) -> String? {
+        let candidates = cycleCandidates(runs, order: order, hidden: hidden)
+        guard !candidates.isEmpty else { return nil }
+        var best: (run: ProviderRun, report: Report, percent: Double)?
+        for run in candidates {
+            guard case .success(let report)? = run.result, let pct = report.maxPercent else { continue }
+            if best == nil || pct > best!.percent {
+                best = (run, report, pct)
+            }
+        }
+        if let best {
+            if CardModel.isGrouped(best.report),
+               let worstMeter = best.report.meters.compactMap({ m in m.maxPercent.map { (m, $0) } }).max(by: { $0.1 < $1.1 })?.0 {
+                return key(run: best.run.id, meter: worstMeter.id)
+            }
+            return CardModel.titlePin(best.run)
+        }
+        let failing = candidates.first { if case .failure? = $0.result { return true }; return false }
+        return CardModel.titlePin(failing ?? candidates[0])
     }
 
     /// The pinned run and meter id, if the run exists. A pin on a provider file whose runs are now

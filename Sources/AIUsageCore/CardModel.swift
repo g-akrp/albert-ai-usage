@@ -4,8 +4,11 @@ public struct CardRing: Equatable {
     /// 0 to 1, clamped; `nil` when the window has no percent.
     public let fraction: Double?
     public let tone: Tone
+    public let elapsed: Double?
 
-    public init(fraction: Double?, tone: Tone) { (self.fraction, self.tone) = (fraction, tone) }
+    public init(fraction: Double?, tone: Tone, elapsed: Double? = nil) {
+        (self.fraction, self.tone, self.elapsed) = (fraction, tone, elapsed)
+    }
 }
 
 public struct CardRow: Equatable {
@@ -47,6 +50,7 @@ public struct CardNotice: Equatable {
 
 public struct Card: Equatable {
     public let id: String
+    public let configId: String
     public let title: String
     /// The account name, shown under the title; `nil` for a provider without accounts.
     public let subtitle: String?
@@ -63,8 +67,10 @@ public struct Card: Equatable {
     public let overflow: [CardRow]
 
     public init(id: String, title: String, subtitle: String?, accent: RGB, pin: String, pinned: Bool, message: CardNotice?,
-                notices: [CardNotice], charts: [CardChart], overflow: [CardRow]) {
-        (self.id, self.title, self.subtitle, self.accent, self.pin, self.pinned) = (id, title, subtitle, accent, pin, pinned)
+                notices: [CardNotice], charts: [CardChart], overflow: [CardRow], configId: String? = nil) {
+        self.id = id
+        self.configId = configId ?? id
+        (self.title, self.subtitle, self.accent, self.pin, self.pinned) = (title, subtitle, accent, pin, pinned)
         (self.message, self.notices, self.charts, self.overflow) = (message, notices, charts, overflow)
     }
 }
@@ -124,7 +130,7 @@ public enum CardModel {
         func make(_ title: String, message: CardNotice? = nil, notices: [CardNotice] = [], charts: [CardChart] = [],
                   overflow: [CardRow] = []) -> Card {
             Card(id: run.id, title: title, subtitle: run.account, accent: run.iconColor, pin: pin, pinned: pinned == pin, message: message, notices: notices,
-                 charts: charts, overflow: overflow)
+                 charts: charts, overflow: overflow, configId: run.configId)
         }
         switch run.result {
         case nil:
@@ -139,6 +145,7 @@ public enum CardModel {
                 notices.append(CardNotice(text: "Plan limits don't apply to this account", tone: .secondary))
             }
             if report.meters.isEmpty { notices.append(CardNotice(text: "No usage data", tone: .secondary)) }
+            if let err = run.staleError { notices.append(CardNotice(text: "Stale: \(err)", tone: .orange)) }
             return withoutActuallyEscaping(formatReset) { format in
                 let env = Env(run: run.id, pinned: pinned, now: now, formatReset: format)
                 var charts: [CardChart] = [], overflow: [CardRow] = []
@@ -164,8 +171,8 @@ public enum CardModel {
 
         func percentText(_ percent: Double?) -> String { percent.map(StatusIcons.percentText) ?? "?" }
 
-        func ring(_ percent: Double?) -> CardRing {
-            CardRing(fraction: percent.map { min(max($0 / 100, 0), 1) }, tone: tone(percent))
+        func ring(_ percent: Double?, elapsed: Double? = nil) -> CardRing {
+            CardRing(fraction: percent.map { min(max($0 / 100, 0), 1) }, tone: tone(percent), elapsed: elapsed)
         }
 
         func reset(_ window: WindowReport?) -> String? {
@@ -187,7 +194,7 @@ public enum CardModel {
         /// One ring per window, session first, then weekly, then the rest in order.
         func windowChart(_ meter: MeterReport, title: String?, pin: String?) -> CardChart {
             let ordered = meter.windows.enumerated().sorted { ($0.element.kind, $0.offset) < ($1.element.kind, $1.offset) }.map(\.element)
-            let rings = ordered.prefix(CardModel.maxRings).map { ring($0.usedPercent) }
+            let rings = ordered.prefix(CardModel.maxRings).map { ring($0.usedPercent, elapsed: $0.elapsedFraction(at: now)) }
             let rows = ordered.enumerated().map { index, window in
                 row(window, label: window.label ?? (isFlat(meter) ? meter.label : window.id),
                     ring: index < CardModel.maxRings ? index : nil)
@@ -212,7 +219,7 @@ public enum CardModel {
             func isPremium(_ m: MeterReport) -> Bool { (m.id + m.label).lowercased().contains("premium") }
             let ordered = meters.enumerated().sorted { (isPremium($0.element) ? 0 : 1, $0.offset) < (isPremium($1.element) ? 0 : 1, $1.offset) }
                 .map(\.element)
-            let rings = ordered.prefix(CardModel.maxRings).map { ring($0.maxPercent) }
+            let rings = ordered.prefix(CardModel.maxRings).map { ring($0.maxPercent, elapsed: $0.windows.first?.elapsedFraction(at: now)) }
             let rows = ordered.enumerated().map { index, meter in
                 row(WindowReport(id: meter.id, usedPercent: meter.maxPercent, resetsAt: meter.windows.first?.resetsAt,
                                  count: meter.windows.first?.count),

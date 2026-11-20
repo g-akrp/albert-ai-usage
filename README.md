@@ -23,12 +23,12 @@ Top row: the provider (`CLD` Claude Code, `CDX` Codex, `AGY` Antigravity, `GHC` 
 
 Click the icon to open the panel, one card per provider:
 
-- **Rings.** Concentric rings, session outermost, then weekly. The center shows the headline percent.
+- **Rings.** Concentric rings, session outermost, then weekly. A pacing tick marks how much of the window's duration has elapsed when known. The center shows the headline percent.
 - **Rows.** Each limit has a colored percent pill, its reset time in your time zone, and the time left.
 - **Groups.** A provider with model groups, like Antigravity, gets one chart per group.
 - **Collapse.** Click the chevron left of a title to shrink a card to one line with its percent pills. It stays collapsed until you expand it.
-- **Pin, Hide, and order.** Hover a card for **Pin**, **Hide**, and `↑` `↓` arrows that move it. The pinned provider or limit is what the menu bar icon shows. Default order: Claude Code, Codex, Antigravity, Copilot.
-- **Menu.** Under the cards: **Refresh Now**, **Providers**, **Cycle Menu Bar**, **Launch at Login**, and **Quit**.
+- **Pin, Hide, retry, and order.** Hover a card for **Pin**, **Hide**, `↑` `↓` arrows that move it, and a retry button (`↻`) to refresh that provider. The pinned provider or limit is what the menu bar icon shows (unless **Most Urgent** or **Cycle Menu Bar** is on). When a transient error happens after a good read, the last-known usage stays visible with a `Stale:` notice. Default order: Claude Code, Codex, Antigravity, Copilot.
+- **Menu.** Under the cards: **Refresh Now**, **Providers**, **Most Urgent**, **Cycle Menu Bar**, **Launch at Login**, and **Quit**.
 
 ## Requirements
 
@@ -69,18 +69,19 @@ This builds the app, signs it ad hoc, and copies it to `~/Applications`.
 - Click the icon for the cards. **Refresh Now** (⌘R) reruns every provider.
 - **Providers** turns each provider on or off. The choice is kept across launches.
 - **Hidden Cards** brings back a card you hid.
-- **Cycle Menu Bar** steps the menu bar icon through the shown providers in card order, 3 seconds each (CLD → CDX → GHC). Its timer runs only while it is on.
+- **Most Urgent** automatically shows the provider or limit with the highest used percent on the menu bar icon.
+- **Cycle Menu Bar** steps the menu bar icon through the visible (non-hidden) providers in card order, 3 seconds each (CLD → CDX → GHC). Its timer runs only while it is on.
 - **Launch at Login** starts the app when you log in.
-- Every provider refreshes every 5 minutes; **Refresh Every** in the panel changes that to 10 s, 30 s or 1 min. A failing provider retries after 1, 2, 4, … minutes, at most every 30.
+- Every provider refreshes every 5 minutes, and automatically when a window's reset time (`resetsAt`) passes; **Refresh Every** in the panel changes the polling interval to 10 s, 30 s or 1 min. A failing provider retries after 1, 2, 4, … minutes, at most every 30.
 
 Upgrading from older versions:
 
 - Before 1.3.0 the app was called Albert AI Usage (`AlbertAIUsage.app`). Quit and delete it after installing AI Usage; your pin and provider switches carry over. Turn **Launch at Login** on again.
 - If you used the SwiftBar plugin, remove its `albert-usage.30s.sh` symlink from SwiftBar's plugin folder.
 
-## MCP
+## MCP and `--json`
 
-Run the app binary with `--mcp` to expose one stdio MCP tool, `usage`, for agents choosing where to route work. MCP mode only reads `~/Library/Application Support/AIUsage/usage.json`, which the running menu bar app updates after each poll — it never runs provider CLIs or reads credentials.
+Run the app binary with `--mcp` to expose one stdio MCP tool, `usage`, for agents choosing where to route work, or with `--json` to print the snapshot JSON to stdout and exit (`0` on success, `1` on error) without launching the menu bar UI. Both modes only read `~/Library/Application Support/AIUsage/usage.json`, which the running menu bar app updates after each poll — they never run provider CLIs or read credentials.
 
 Register with Claude Code or Codex (replace `/Applications` with `~/Applications` if installed via `scripts/build-app.sh`):
 
@@ -89,14 +90,16 @@ claude mcp add aiusage -- "/Applications/AI Usage.app/Contents/MacOS/AIUsage" --
 codex mcp add aiusage -- "/Applications/AI Usage.app/Contents/MacOS/AIUsage" --mcp
 ```
 
-`usage` returns JSON with:
+`usage` and `--json` return JSON with:
 
 - `generatedAt`: ISO 8601 timestamp of the snapshot.
 - `ageSeconds`: seconds since `generatedAt`.
 - `stale`: `true` when `ageSeconds` exceeds 3× the app's current refresh interval.
-- `providers`: sorted most `remainingPercent` first (`ok`, then `loading`, then `error`; providers without a percent sort after numbered ones within a status). Each entry has `id`, `name`, `status` (`ok | error | loading`), optional `message`, `remainingPercent` and `resetsAt` of its tightest window, and all `windows`. Providers that need login report `status: "error"` with the provider's message.
+- `providers`: sorted most `remainingPercent` first (`ok`, then `loading`, then `error`; providers without a percent sort after numbered ones within a status). Each entry has `id`, `name`, `status` (`ok | error | loading`), optional `message`, `remainingPercent` and `resetsAt` of its tightest window, and all `windows`. Each window includes `id`, optional `label`, `remainingPercent`, `resetsAt`, `durationSeconds` (when known), `elapsedPercent` (when `resetsAt` and `durationSeconds` are known), and `count` (`used`, `limit`, optional `unit`). Providers that need login report `status: "error"` with the provider's message.
 
-The menu bar app must be running so the snapshot stays current; if `usage.json` is missing, `usage` returns an error result.
+The menu bar app must be running so the snapshot stays current; if `usage.json` is missing, `usage` returns an error result and `--json` prints `{"error": ...}` and exits `1`.
+
+For Claude Code, `.claude/agents/usage-router.md` is a read-only subagent that calls `usage` and recommends which provider should take a task. Copy it to `~/.claude/agents/` to use it outside this repo.
 
 ## Privacy
 

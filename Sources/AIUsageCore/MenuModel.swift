@@ -17,6 +17,7 @@ public enum MenuEntry: Equatable {
     case refreshInterval(Int)
     /// Whether the menu bar steps through every provider.
     case cycleIcon(Bool)
+    case mostUrgent(Bool)
     case launchAtLogin(Bool)
     case openProvidersFolder
     case version(String)
@@ -50,8 +51,8 @@ public struct ProviderToggle: Equatable {
 public enum MenuModel {
     public static func entries(runs: [ProviderRun], pinned: String?, configErrors: [String],
                                providers: [ProviderToggle] = [], updated: String?,
-                               launchAtLogin: Bool, version: String, hidden: Set<String> = [], order: [String] = [],
-                               refreshSeconds: Int = Schedule.standard, cycling: Bool = false, now: Date = Date(),
+                               launchAtLogin: Bool, version: String, appName: String = "AI Usage", hidden: Set<String> = [], order: [String] = [],
+                               refreshSeconds: Int = Schedule.standard, cycling: Bool = false, mostUrgent: Bool = false, now: Date = Date(),
                                formatReset: (Date) -> String) -> [MenuEntry] {
         var entries: [MenuEntry] = []
         let pin = Pin.effective(pinned, in: runs)
@@ -74,8 +75,8 @@ public enum MenuModel {
         if !providers.isEmpty { entries.append(.providers(providers)) }
         let hiddenRuns = runs.filter { hidden.contains($0.id) }.map { HiddenCard(id: $0.id, name: $0.name) }
         if !hiddenRuns.isEmpty { entries.append(.hiddenCards(hiddenRuns)) }
-        entries += [.cycleIcon(cycling), .launchAtLogin(launchAtLogin), .openProvidersFolder, .separator,
-                     .version("AI Usage \(version)"), .credit(before: "Built with", after: "by g.akrp"), .quit]
+        entries += [.cycleIcon(cycling), .mostUrgent(mostUrgent), .launchAtLogin(launchAtLogin), .openProvidersFolder, .separator,
+                     .version("\(appName) \(version)"), .credit(before: "Built with", after: "by g.akrp"), .quit]
         return entries
     }
 
@@ -125,10 +126,32 @@ public enum Schedule {
     /// How often the schedule timer fires: every 30 s, or every 10 s when the interval is that short.
     public static func tick(interval: Int) -> TimeInterval { interval <= 30 ? 10 : 30 }
 
+    /// Earliest future window reset across successful `runs` after `started`.
+    public static func nextReset(in runs: [ProviderRun], after started: Date) -> Date? {
+        runs.compactMap { run -> Report? in
+            guard case .success(let report) = run.result else { return nil }
+            return report
+        }
+        .flatMap(\.meters)
+        .flatMap(\.windows)
+        .compactMap(\.resetsAt)
+        .filter { $0 > started }
+        .min()
+    }
+
+    /// When a provider should run next, pulling forward to an upcoming `resetsAt` when healthy.
+    public static func nextRun(started: Date, interval: Int, failures: Int, resetsAt: Date? = nil) -> Date {
+        let scheduled = started + delay(interval: interval, failures: failures)
+        if failures == 0, let resetsAt, resetsAt > started, resetsAt < scheduled {
+            return resetsAt
+        }
+        return scheduled
+    }
+
     /// Whether a provider that last started at `started` should run again. The timer may fire a little
     /// early, so a run due within a second counts.
-    public static func isDue(started: Date, interval: Int, failures: Int, now: Date) -> Bool {
-        started + delay(interval: interval, failures: failures) <= now + 1
+    public static func isDue(started: Date, interval: Int, failures: Int, now: Date, resetsAt: Date? = nil) -> Bool {
+        nextRun(started: started, interval: interval, failures: failures, resetsAt: resetsAt) <= now + 1
     }
 
     /// After `failures` failures in a row: 1, 2, 4, … minutes, at most 30. Otherwise the interval.

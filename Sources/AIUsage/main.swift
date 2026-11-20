@@ -16,6 +16,13 @@ if CommandLine.arguments.contains("--mcp") {
     exit(0)
 }
 
+if CommandLine.arguments.contains("--json") {
+    let result = UsageSnapshot.cliJSON(load: { try Data(contentsOf: SnapshotFile.url) }, now: Date())
+    print(result.output)
+    fflush(stdout)
+    exit(result.exitCode)
+}
+
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let controller = StatusController()
