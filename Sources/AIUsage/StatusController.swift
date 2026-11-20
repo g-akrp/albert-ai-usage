@@ -112,6 +112,7 @@ final class StatusController: NSObject {
         migrateOldPin()
 
         statusItem.button?.imagePosition = .imageOnly
+        statusItem.button?.wantsLayer = true
         if #available(macOS 27, *) {
             statusItem.expandedInterfaceDelegate = self
         } else {
@@ -166,7 +167,8 @@ final class StatusController: NSObject {
 
     // MARK: Menu bar icon
 
-    private func updateIcons() {
+    /// `cycled`: a cycle step changed the provider shown, so the new icon crossfades in.
+    private func updateIcons(cycled: Bool = false) {
         let effective = Pin.effective(pinned, in: visibleRuns)
         if let effective, effective != pinned { pinned = effective }
         let shown: String? = switch menuBarMode {
@@ -185,6 +187,7 @@ final class StatusController: NSObject {
         let spec = StatusIcons.icon(runs: visibleRuns, pinned: shown)
         guard spec != icon else { return }
         icon = spec
+        if cycled { Motion.fade(button, 0.3) }
         button.image = Self.image(spec)
         button.toolTip = spec.accessibility
         button.setAccessibilityLabel(spec.accessibility)
@@ -200,7 +203,7 @@ final class StatusController: NSObject {
         let timer = Timer(timeInterval: Pin.cycleSeconds, repeats: true) { [weak self] _ in
             guard let self else { return }
             self.cycleStep += 1
-            self.updateIcons()
+            self.updateIcons(cycled: true)
         }
         RunLoop.main.add(timer, forMode: .common)
         cycleTimer = timer
