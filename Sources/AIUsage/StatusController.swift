@@ -42,7 +42,11 @@ final class StatusController: NSObject {
             self?.countdown?.invalidate()
             self?.countdown = nil
             self?.expandedSections = []
-            self?.statusItem.button?.highlight(false)
+            if #available(macOS 27, *) {
+                self?.statusItem.expandedInterfaceSession?.cancel()
+            } else {
+                self?.statusItem.button?.highlight(false)
+            }
         }
         return panel
     }()
@@ -108,9 +112,13 @@ final class StatusController: NSObject {
         migrateOldPin()
 
         statusItem.button?.imagePosition = .imageOnly
-        statusItem.button?.target = self
-        statusItem.button?.action = #selector(togglePanel)
-        statusItem.button?.sendAction(on: [.leftMouseDown, .rightMouseDown])
+        if #available(macOS 27, *) {
+            statusItem.expandedInterfaceDelegate = self
+        } else {
+            statusItem.button?.target = self
+            statusItem.button?.action = #selector(togglePanel)
+            statusItem.button?.sendAction(on: [.leftMouseDown, .rightMouseDown])
+        }
         poller.disabled = disabled
         poller.interval = refreshSeconds
         poller.onChange = { [weak self] in self?.pollerChanged() }
@@ -223,9 +231,14 @@ final class StatusController: NSObject {
     // MARK: Panel
 
     @objc private func togglePanel() {
-        guard let button = statusItem.button else { return }
+        guard statusItem.button != nil else { return }
         if panel.isOpen { return panel.close() }
         if panel.justClosed { return }
+        openPanel()
+    }
+
+    private func openPanel() {
+        guard let button = statusItem.button else { return }
         panel.open(under: button, content: content())
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             guard let self, let row = self.content().rows.first(where: { $0.kind == .updated }) else { return }
@@ -233,8 +246,11 @@ final class StatusController: NSObject {
         }
         RunLoop.main.add(timer, forMode: .common)
         countdown = timer
-        // The button drops its highlight when this click ends; set it after that.
-        DispatchQueue.main.async { [weak self] in button.highlight(self?.panel.isOpen == true) }
+        // The system keeps the status button highlighted while the session is active.
+        if #unavailable(macOS 27) {
+            // The button drops its highlight when this click ends; set it after that.
+            DispatchQueue.main.async { [weak self] in button.highlight(self?.panel.isOpen == true) }
+        }
     }
 
     private func content() -> PanelContent {
@@ -326,6 +342,25 @@ final class StatusController: NSObject {
     }
 
     private func quit() {
+        if #available(macOS 27, *) { panel.close() }
         NSApp.terminate(nil)
+    }
+}
+
+@available(macOS 27, *)
+extension StatusController: NSStatusItemExpandedInterfaceDelegate {
+    func statusItem(_ statusItem: NSStatusItem, didBegin expandedInterfaceSession: NSStatusItemExpandedInterfaceSession) {
+        // An icon click during a session can dismiss and immediately re-begin it; cancel the reopen.
+        NSLog("AIUsage: didBegin (%@)", panel.isOpen ? "cancelling reopened session" : "opening panel")
+        if panel.isOpen {
+            expandedInterfaceSession.cancel()
+            return
+        }
+        openPanel()
+    }
+
+    func statusItemDidEndExpandedInterfaceSession(_ statusItem: NSStatusItem, animated: Bool) {
+        NSLog("AIUsage: didEnd")
+        panel.close()
     }
 }

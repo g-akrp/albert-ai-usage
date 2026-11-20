@@ -117,25 +117,37 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
         cardViews.forEach { $0.playIntro() }
 
-        // A click anywhere else closes the panel. The icon's own click is left to its action, which toggles.
-        let clicks: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
-        monitors = [
-            NSEvent.addGlobalMonitorForEvents(matching: clicks) { [weak self] _ in
-                guard let self, let frame = self.button.flatMap({ $0.window?.convertToScreen($0.convert($0.bounds, to: nil)) }),
-                      !frame.contains(NSEvent.mouseLocation) else { return }
-                self.close()
-            },
-            NSEvent.addLocalMonitorForEvents(matching: clicks) { [weak self] event in
-                if let self, event.window !== self.panel, event.window !== self.button?.window { self.close() }
-                return event
-            },
-        ].compactMap { $0 }
+        if #available(macOS 27, *) {
+            // The session ends on outside clicks, but an icon click during it reaches neither the button nor the
+            // delegate; the menu bar delivers it to another process, so only a global monitor sees it.
+            monitors = [
+                NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+                    let frame = self?.button.flatMap { $0.window?.convertToScreen($0.convert($0.bounds, to: nil)) }
+                    guard let self, let frame, frame.contains(NSEvent.mouseLocation) else { return }
+                    self.close()
+                },
+            ].compactMap { $0 }
+        } else {
+            // A click anywhere else closes the panel. The icon's own click is left to its action, which toggles.
+            let clicks: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+            monitors = [
+                NSEvent.addGlobalMonitorForEvents(matching: clicks) { [weak self] _ in
+                    guard let self, let frame = self.button.flatMap({ $0.window?.convertToScreen($0.convert($0.bounds, to: nil)) }),
+                          !frame.contains(NSEvent.mouseLocation) else { return }
+                    self.close()
+                },
+                NSEvent.addLocalMonitorForEvents(matching: clicks) { [weak self] event in
+                    if let self, event.window !== self.panel, event.window !== self.button?.window { self.close() }
+                    return event
+                },
+            ].compactMap { $0 }
+        }
     }
 
     func close() {
         guard isOpen, let closing = panel else { return }
         isOpen = false
-        closedAt = ProcessInfo.processInfo.systemUptime
+        if #unavailable(macOS 27) { closedAt = ProcessInfo.processInfo.systemUptime }
         monitors.forEach(NSEvent.removeMonitor)
         monitors = []
         generation += 1
