@@ -14,6 +14,7 @@ struct PanelActions {
     var hide: (String) -> Void
     var move: (String, Int) -> Void
     var toggle: (String) -> Void
+    var retry: (String) -> Void
     var row: (PanelRow.Kind) -> Void
 }
 
@@ -186,7 +187,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             }
             let view = CardView(card: card, width: width, leading: Self.leading, collapsed: collapsed, canMoveUp: canMoveUp,
                                 canMoveDown: canMoveDown, onPin: actions.pin, onHide: actions.hide, onMove: actions.move,
-                                onToggle: actions.toggle)
+                                onToggle: actions.toggle, onRetry: actions.retry)
             if animated { view.playIntro() }
             return view
         }

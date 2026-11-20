@@ -80,6 +80,15 @@ public struct WindowReport: Equatable {
         if durationSeconds == 7 * 86_400 || text.contains("weekly") { return .weekly }
         return .other
     }
+
+    public static func elapsedFraction(resetsAt: Date?, durationSeconds: Int?, at now: Date) -> Double? {
+        guard let resetsAt, let duration = durationSeconds, duration > 0 else { return nil }
+        return min(max(1 - resetsAt.timeIntervalSince(now) / Double(duration), 0), 1)
+    }
+
+    public func elapsedFraction(at now: Date) -> Double? {
+        Self.elapsedFraction(resetsAt: resetsAt, durationSeconds: durationSeconds, at: now)
+    }
 }
 
 public struct ProviderFailure: Error, Equatable {

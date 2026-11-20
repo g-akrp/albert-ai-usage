@@ -23,7 +23,7 @@ final class CardView: NSView {
 
     /// `rect` is where a click counts; `box` is the outlined button drawn around the pin icon.
     private struct PinTarget {
-        enum Kind { case pin(pinned: Bool), hide, move(step: Int), toggle }
+        enum Kind { case pin(pinned: Bool), hide, move(step: Int), toggle, retry }
         let rect: NSRect, box: NSRect, key: String, label: String, kind: Kind
     }
 
@@ -35,6 +35,7 @@ final class CardView: NSView {
     private static let hideWidth = box, pinWidth = box
     /// The two arrow buttons that reorder a card sit left of Hide, each `box` wide, 4 pt apart.
     private static let moveSpace = 2 * (box + 4)
+    private static let retrySpace = box + 4
     /// The collapse chevron's column, left of the title.
     private static let chevronSpace: CGFloat = 14
 
@@ -55,6 +56,7 @@ final class CardView: NSView {
     private let onHide: (String) -> Void
     private let onMove: (String, Int) -> Void
     private let onToggle: (String) -> Void
+    private let onRetry: (String) -> Void
     private var collapsed: Bool
     private var canMoveUp: Bool, canMoveDown: Bool
     private var cardHovered = false
@@ -76,7 +78,7 @@ final class CardView: NSView {
         let columnX = leading + chartSize + large, indent = leading, pinSpace = pinWidth + 6
         var widest = minWidth
         for card in cards {
-            widest = max(widest, indent + chevronSpace + size(card.title, boldTitleFont) + large + pinSpace + hideWidth + moveSpace + leading)
+            widest = max(widest, indent + chevronSpace + size(card.title, boldTitleFont) + large + pinSpace + hideWidth + moveSpace + retrySpace + leading)
             if let account = card.subtitle { widest = max(widest, indent + size(account, bodyFont) + leading) }
             for notice in [card.message].compactMap({ $0 }) + card.notices {
                 widest = max(widest, indent + size(notice.text, bodyFont) + leading)
@@ -102,10 +104,11 @@ final class CardView: NSView {
 
     init(card: Card, width: CGFloat, leading: CGFloat, collapsed: Bool, canMoveUp: Bool, canMoveDown: Bool,
          onPin: @escaping (String) -> Void, onHide: @escaping (String) -> Void, onMove: @escaping (String, Int) -> Void,
-         onToggle: @escaping (String) -> Void) {
+         onToggle: @escaping (String) -> Void, onRetry: @escaping (String) -> Void = { _ in }) {
         self.card = card
         self.collapsed = collapsed
         self.onToggle = onToggle
+        self.onRetry = onRetry
         self.canMoveUp = canMoveUp
         self.canMoveDown = canMoveDown
         self.onMove = onMove
@@ -258,6 +261,7 @@ final class CardView: NSView {
         case .hide: onHide(targets[index].key)
         case .move(let step): onMove(targets[index].key, step)
         case .toggle: onToggle(targets[index].key)
+        case .retry: onRetry(targets[index].key)
         }
     }
 
@@ -274,11 +278,13 @@ final class CardView: NSView {
         chevron(at: NSPoint(x: indent, y: y), height: titleLine, draw: draw)
         text(card.title, font: card.pinned ? Self.boldTitleFont : Self.titleFont, color: .labelColor,
              at: NSPoint(x: titleX, y: y), height: titleLine, draw: draw)
-        // Hide and the arrows are recorded first so they win where their boxes overlap the pin's wide hover area.
+        // Hide, move, and retry are recorded first so they win where their boxes overlap the pin's wide hover area.
         let hideX = right - Self.pinWidth - 6 - Self.hideWidth, buttonY = y + (titleLine - Self.box) / 2
         hideButton(at: NSPoint(x: hideX, y: buttonY), draw: draw)
         if canMoveDown { moveButton(1, at: NSPoint(x: hideX - 4 - Self.box, y: buttonY), draw: draw) }
         if canMoveUp { moveButton(-1, at: NSPoint(x: hideX - 8 - 2 * Self.box, y: buttonY), draw: draw) }
+        let retryX = hideX - CGFloat(canMoveUp ? 2 : canMoveDown ? 1 : 0) * (Self.box + 4) - 4 - Self.box
+        retryButton(at: NSPoint(x: retryX, y: buttonY), draw: draw)
         pin(card.pinned, key: card.pin, label: name,
             at: NSPoint(x: right - Self.pinWidth, y: y + (titleLine - Self.box) / 2),
             hit: NSRect(x: x, y: y, width: right - x, height: titleLine), draw: draw)
@@ -435,6 +441,9 @@ final class CardView: NSView {
             if let fraction = fractions[index], fraction > 0 {
                 Self.arc(center: center, radius: radius, fraction: fraction, color: shade(index))
             }
+            if let elapsed = chart.rings[index].elapsed, elapsed > 0, elapsed < 1 {
+                Self.tick(center: center, radius: radius, elapsed: elapsed)
+            }
         }
         let font = NSFont.menuFont(ofSize: 11)
         let text = counted(chart.center) { $0.charts.indices.contains(chartIndex) ? $0.charts[chartIndex].center : nil }
@@ -465,6 +474,21 @@ final class CardView: NSView {
         path.stroke()
     }
 
+    private static func tick(center: NSPoint, radius: CGFloat, elapsed: Double) {
+        let angle = -Double.pi / 2 + 2 * Double.pi * elapsed
+        let cosA = CGFloat(cos(angle))
+        let sinA = CGFloat(sin(angle))
+        let inner = radius - thickness / 2 - 1
+        let outer = radius + thickness / 2 + 1
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: center.x + inner * cosA, y: center.y + inner * sinA))
+        path.line(to: NSPoint(x: center.x + outer * cosA, y: center.y + outer * sinA))
+        path.lineWidth = 1.5
+        path.lineCapStyle = .round
+        NSColor.labelColor.withAlphaComponent(0.75).setStroke()
+        path.stroke()
+    }
+
     /// Draws `string` vertically centered in a line of `height` starting at `point`.
     @discardableResult
     private func text(_ string: String, font: NSFont, color: NSColor, at point: NSPoint, height: CGFloat, draw: Bool) -> NSSize {
@@ -491,14 +515,22 @@ final class CardView: NSView {
         button(.move(step: step), key: card.id, label: name, at: origin, hit: hit, draw: draw)
     }
 
+    /// The "Refresh" button left of the move/hide cluster; drawn only while the pointer is over the card.
+    private func retryButton(at origin: NSPoint, draw: Bool) {
+        let hit = NSRect(origin: origin, size: NSSize(width: Self.box, height: Self.box)).insetBy(dx: -2, dy: -2)
+        button(.retry, key: card.configId, label: name, at: origin, hit: hit, draw: draw)
+    }
+
     /// Records the click area; draws an outlined text button that reacts to hover and press.
     private func button(_ kind: PinTarget.Kind, key: String, label: String, at origin: NSPoint, hit: NSRect, draw: Bool) {
         var pinned = false, symbol: String? = "eye.slash", title = NSAttributedString()
-        if case .pin(let value) = kind {
-            (pinned, symbol) = (value, value ? "pin.fill" : "pin")
-        } else if case .move(let step) = kind {
+        switch kind {
+        case .pin(let value): (pinned, symbol) = (value, value ? "pin.fill" : "pin")
+        case .move(let step):
             symbol = nil
             title = NSAttributedString(string: step < 0 ? "\u{2191}" : "\u{2193}", attributes: [.font: Self.pinFont])
+        case .retry: symbol = "arrow.clockwise"
+        case .hide, .toggle: break
         }
         let box = NSRect(origin: origin, size: NSSize(width: Self.box, height: Self.box))
         let index = targets.count
@@ -586,6 +618,7 @@ final class CardView: NSView {
                 case .hide: self?.onHide(target.key)
                 case .move(let step): self?.onMove(target.key, step)
                 case .toggle: self?.onToggle(target.key)
+                case .retry: self?.onRetry(target.key)
                 }
             })
             element.setAccessibilityRole(.button)
@@ -594,6 +627,7 @@ final class CardView: NSView {
             case .hide: element.setAccessibilityLabel("Hide \(target.label)")
             case .move(let step): element.setAccessibilityLabel("Move \(target.label) \(step < 0 ? "up" : "down")")
             case .toggle: element.setAccessibilityLabel("\(collapsed ? "Expand" : "Collapse") \(target.label)")
+            case .retry: element.setAccessibilityLabel("Refresh \(target.label)")
             }
             element.setAccessibilityParent(self)
             element.setAccessibilityFrameInParentSpace(target.rect)

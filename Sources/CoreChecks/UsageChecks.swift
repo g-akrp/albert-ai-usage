@@ -52,6 +52,54 @@ func usageChecks() {
     check("usageViewStale", (staleView["stale"] as? Bool) == true && (staleView["ageSeconds"] as? Int) == 100)
     let freshView = snap.view(now: now.addingTimeInterval(60))
     check("usageViewFresh", (freshView["stale"] as? Bool) == false && (freshView["ageSeconds"] as? Int) == 60)
+
+    let staleRun = ProviderRun(id: "stale", name: "Stale", iconLabel: "STL", iconColor: .gray,
+                               result: report([WindowReport(id: "session", label: "Session", usedPercent: 30, resetsAt: r1)]),
+                               staleError: "timed out")
+    let staleSnap = UsageSnapshot(runs: [staleRun], now: now, intervalSeconds: 30)
+    let staleProvider = staleSnap.providers.first { $0.id == "stale" }
+    check("usageStaleErrorKeepsNumbers",
+          staleProvider?.status == "ok" && staleProvider?.remainingPercent == 70 && staleProvider?.message == "Stale: timed out")
+
+    let metaRun = run("meta", name: "Meta", result: report([
+        WindowReport(id: "session", label: "Session", usedPercent: 40, resetsAt: now.addingTimeInterval(9000),
+                     durationSeconds: 18000, count: WindowCount(used: 40, limit: 100, unit: "credits")),
+    ]))
+    let metaSnap = UsageSnapshot(runs: [metaRun], now: now, intervalSeconds: 30)
+    let metaEncoded = try? metaSnap.encoded()
+    let metaDecoded = metaEncoded.flatMap { try? UsageSnapshot.decode($0) }
+    let metaView = metaSnap.view(now: now)
+    let metaWin = ((metaView["providers"] as? [[String: Any]])?.first?["windows"] as? [[String: Any]])?.first
+    let metaCount = metaWin?["count"] as? [String: Any]
+    check("usageWindowMetadata",
+          metaDecoded == metaSnap
+          && metaWin?["durationSeconds"] as? Int == 18000
+          && JSON.number(metaWin?["elapsedPercent"]) == 50.0
+          && JSON.number(metaCount?["used"]) == 40
+          && JSON.number(metaCount?["limit"]) == 100
+          && metaCount?["unit"] as? String == "credits")
+
+    let laterView = metaSnap.view(now: now.addingTimeInterval(4500))
+    let laterWin = ((laterView["providers"] as? [[String: Any]])?.first?["windows"] as? [[String: Any]])?.first
+    check("usageWindowElapsedTracksViewNow", JSON.number(laterWin?["elapsedPercent"]) == 75.0)
+
+    let noDurView = snap.view(now: now)
+    let noDurWin = ((noDurView["providers"] as? [[String: Any]])?.first?["windows"] as? [[String: Any]])?.first
+    check("usageWindowNoDurationOmitsElapsed",
+          noDurWin?["durationSeconds"] == nil && noDurWin?["elapsedPercent"] == nil)
+
+    let cliOk = UsageSnapshot.cliJSON(load: { encoded ?? Data() }, now: now)
+    let cliOkObj = JSON.parse(Data(cliOk.output.utf8)) as? [String: Any]
+    check("cliJSONSuccess", cliOk.exitCode == 0 && cliOkObj?["providers"] != nil)
+
+    let cliMissing = UsageSnapshot.cliJSON(load: { throw NSError(domain: NSPOSIXErrorDomain, code: Int(ENOENT)) }, now: now)
+    let cliMissingObj = JSON.parse(Data(cliMissing.output.utf8)) as? [String: Any]
+    check("cliJSONMissingFile",
+          cliMissing.exitCode == 1 && (cliMissingObj?["error"] as? String)?.contains("not running") == true)
+
+    let cliCorrupt = UsageSnapshot.cliJSON(load: { Data("{".utf8) }, now: now)
+    let cliCorruptObj = JSON.parse(Data(cliCorrupt.output.utf8)) as? [String: Any]
+    check("cliJSONCorruptFile", cliCorrupt.exitCode == 1 && cliCorruptObj?["error"] != nil)
 }
 
 func mcpChecks() {
@@ -129,4 +177,11 @@ func snapshotFileChecks() {
     let readSecond = try? Data(contentsOf: target)
     check("snapshotFileOverwrite", wroteSecond && readSecond == second)
     check("snapshotFileDefaultUrl", SnapshotFile.url.path.hasSuffix("/Library/Application Support/AIUsage/usage.json"))
+    check("snapshotFileBetaUrl",
+          SnapshotFile.url(home: "/tmp", isBeta: true).path == "/tmp/Library/Application Support/AIUsageBeta/usage.json"
+          && SnapshotFile.url(home: "/tmp", isBeta: false).path == "/tmp/Library/Application Support/AIUsage/usage.json")
+    check("betaVersionLabel",
+          MenuModel.entries(runs: [], pinned: nil, configErrors: [], updated: nil, launchAtLogin: false,
+                            version: "1.17.0-beta.1", appName: "AI Usage Beta", formatReset: { _ in "" })
+              .contains(.version("AI Usage Beta 1.17.0-beta.1")))
 }

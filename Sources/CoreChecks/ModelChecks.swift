@@ -253,6 +253,34 @@ func menuChecks() {
 
     check("scheduleInterval", Schedule.delay(interval: 300, failures: 0) == 300)
     check("scheduleBackoff", (1...8).map { Schedule.delay(interval: 300, failures: $0) } == [60, 120, 240, 480, 960, 1800, 1800, 1800])
+
+    let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+    let resetSuccess = sampleRun("codex:a", "Codex A", "CDX", .success(Report(meters: [
+        MeterReport(id: "m", label: "M", windows: [
+            WindowReport(id: "past", label: "Past", usedPercent: 10, resetsAt: t0.addingTimeInterval(-10)),
+            WindowReport(id: "later", label: "Later", usedPercent: 20, resetsAt: t0.addingTimeInterval(120)),
+            WindowReport(id: "soon", label: "Soon", usedPercent: 30, resetsAt: t0.addingTimeInterval(60)),
+        ]),
+    ])))
+    let resetFailed = sampleRun("codex:b", "Codex B", "CDX", .failure(ProviderFailure("err")))
+    let resetNil = sampleRun("codex:c", "Codex C", "CDX", nil)
+    check("nextResetPicksEarliestAfterStart",
+          Schedule.nextReset(in: [resetFailed, resetNil, resetSuccess], after: t0) == t0.addingTimeInterval(60))
+    let pastOnly = sampleRun("codex:d", "Codex D", "CDX", .success(Report(meters: [
+        MeterReport(id: "m", label: "M", windows: [
+            WindowReport(id: "past", label: "Past", usedPercent: 10, resetsAt: t0.addingTimeInterval(-5)),
+            WindowReport(id: "equal", label: "Equal", usedPercent: 10, resetsAt: t0),
+        ]),
+    ])))
+    check("nextResetIgnoresPastOrEqual", Schedule.nextReset(in: [pastOnly], after: t0) == nil)
+    check("isDueAtPassedReset",
+          Schedule.isDue(started: t0, interval: 300, failures: 0, now: t0.addingTimeInterval(90), resetsAt: t0.addingTimeInterval(90))
+              && !Schedule.isDue(started: t0, interval: 300, failures: 0, now: t0.addingTimeInterval(80), resetsAt: t0.addingTimeInterval(90)))
+    check("isDueBackoffOverridesReset",
+          !Schedule.isDue(started: t0, interval: 300, failures: 2, now: t0.addingTimeInterval(40), resetsAt: t0.addingTimeInterval(30)))
+    check("nextRunPrefersEarlierReset",
+          Schedule.nextRun(started: t0, interval: 300, failures: 0, resetsAt: t0.addingTimeInterval(45)) == t0.addingTimeInterval(45)
+              && Schedule.nextRun(started: t0, interval: 300, failures: 0, resetsAt: t0.addingTimeInterval(600)) == t0.addingTimeInterval(300))
     check("versionFormat", AppVersion.current.range(of: #"^\d+\.\d+\.\d+$"#, options: .regularExpression) != nil)
     if let plist = NSDictionary(contentsOfFile: "Resources/Info.plist") {
         check("versionMatchesInfoPlist", plist["CFBundleShortVersionString"] as? String == AppVersion.current)
@@ -297,6 +325,46 @@ func pinChecks() {
     let flat = MenuModel.entries(runs: [copilotRun], pinned: nil, configErrors: [], updated: nil, launchAtLogin: false,
                                  version: "1", formatReset: utc.string(from:))
     check("menuFlatMeterPinnable", flat.contains { if case .card(let c) = $0 { return c.charts[0].rows.map(\.pin) == ["copilot:a|premium", "copilot:a|chat"] }; return false })
+
+    let cycleRuns = [
+        ProviderRun(id: "claude", name: "Claude", iconLabel: "CLD", iconColor: .gray),
+        ProviderRun(id: "codex", name: "Codex", iconLabel: "CDX", iconColor: .gray),
+        ProviderRun(id: "copilot", name: "Copilot", iconLabel: "GH", iconColor: .gray),
+    ]
+    check("cycleCandidatesExcludesHidden",
+          Pin.cycleCandidates(cycleRuns, order: ["copilot", "claude", "codex"], hidden: ["claude"]).map(\.id) == ["copilot", "codex"])
+    check("cycleCandidatesAllHidden",
+          Pin.cycleCandidates(cycleRuns, order: [], hidden: ["claude", "codex", "copilot"]).isEmpty && Pin.cycle(0, in: []) == nil)
+
+    func makeRun(_ id: String, _ percents: [(String, Double)]) -> ProviderRun {
+        let meters = percents.map { label, pct in
+            MeterReport(id: label, label: label, windows: [WindowReport(id: "w", label: "Weekly", usedPercent: pct)])
+        }
+        return ProviderRun(id: id, name: id, iconLabel: id.uppercased(), iconColor: .gray, result: .success(Report(meters: meters)))
+    }
+    let urgentRuns = [
+        makeRun("claude", [("Plan", 40)]),
+        makeRun("codex", [("Plan", 85)]),
+        makeRun("copilot", [("Plan", 20)]),
+    ]
+    check("mostUrgentPicksHighestPercent",
+          Pin.mostUrgent(in: urgentRuns, order: [], hidden: []) == "codex")
+    let groupedUrgent = [
+        makeRun("antigravity", [("Gemini", 10), ("Claude/GPT", 92)]),
+        makeRun("claude", [("Plan", 50)]),
+    ]
+    check("mostUrgentPicksWorstGroupMeter",
+          Pin.mostUrgent(in: groupedUrgent, order: [], hidden: []) == "antigravity|Claude/GPT")
+    check("mostUrgentExcludesHidden",
+          Pin.mostUrgent(in: [makeRun("claude", [("Plan", 40)]), makeRun("codex", [("Plan", 95)])], order: [], hidden: ["codex"]) == "claude")
+    check("mostUrgentTieBreaksByOrder",
+          Pin.mostUrgent(in: [makeRun("claude", [("Plan", 70)]), makeRun("codex", [("Plan", 70)])], order: ["codex", "claude"], hidden: []) == "codex")
+    check("mostUrgentAllHidden",
+          Pin.mostUrgent(in: urgentRuns, order: [], hidden: ["claude", "codex", "copilot"]) == nil)
+    check("menuBarModeLegacyMigration",
+          MenuBarMode.resolve(stored: nil, legacyCycle: true) == .cycle
+          && MenuBarMode.resolve(stored: "urgent", legacyCycle: true) == .urgent
+          && MenuBarMode.resolve(stored: "bogus", legacyCycle: false) == .pinned)
 }
 
 func toggleChecks() {
@@ -368,7 +436,7 @@ func cardChecks() {
                                                         win("five_hour", "Session", 10, seconds: 18_000, reset: 120)])])), pinned: "claude")
     check("cardClaudeShape", claude.title == "Claude Code (max)" && claude.charts.count == 1 && claude.charts[0].title == nil
           && claude.charts[0].center == "10%" && claude.pin == "claude" && claude.pinned && claude.overflow.isEmpty)
-    check("cardClaudeRings", claude.charts[0].rings == [CardRing(fraction: 0.10, tone: .green), CardRing(fraction: 0.80, tone: .orange)]
+    check("cardClaudeRings", claude.charts[0].rings == [CardRing(fraction: 0.10, tone: .green, elapsed: 1 - 120.0 / 18_000.0), CardRing(fraction: 0.80, tone: .orange)]
           && claude.charts[0].rows.map(\.ringIndex) == [0, 1] && claude.charts[0].rows.map(\.label) == ["Session", "Weekly"]
           && claude.charts[0].rows.allSatisfy { $0.pin == nil })
     let account = card(ProviderRun(id: "copilot:octocat", name: "GitHub Copilot \u{00B7} octocat", iconLabel: "GH1", iconColor: .gray,
@@ -436,6 +504,25 @@ func cardChecks() {
                                            CardNotice(text: "Plan limits don't apply to this account", tone: .secondary),
                                            CardNotice(text: "No usage data", tone: .secondary)])
 
+    let halfway = win("five_hour", "Session", 40, seconds: 18_000, reset: 9_000)
+    check("elapsedHalfway", halfway.elapsedFraction(at: now).map { abs($0 - 0.5) < 1e-9 } == true)
+    check("elapsedClampsBounds",
+          win("a", nil, 0, seconds: 18_000, reset: -60).elapsedFraction(at: now) == 1.0
+          && win("b", nil, 0, seconds: 18_000, reset: 20_000).elapsedFraction(at: now) == 0.0)
+    check("elapsedNilWhenMissingOrZero",
+          win("a", nil, 0, seconds: nil, reset: 100).elapsedFraction(at: now) == nil
+          && win("b", nil, 0, seconds: 0, reset: 100).elapsedFraction(at: now) == nil
+          && win("c", nil, 0, seconds: 18_000, reset: nil).elapsedFraction(at: now) == nil)
+    let elapsedCard = card(make("e", "E", Report(meters: [
+        MeterReport(id: "m", label: "M", windows: [
+            win("five_hour", "Session", 40, seconds: 18_000, reset: 9_000),
+            win("no_dur", "Other", 20, seconds: nil, reset: 9_000)
+        ])
+    ])))
+    check("cardRingPopulatesElapsed",
+          elapsedCard.charts[0].rings[0].elapsed.map { abs($0 - 0.5) < 1e-9 } == true
+          && elapsedCard.charts[0].rings[1].elapsed == nil)
+
     // Hiding a card: only the panel changes; the provider keeps running and can still be pinned.
     func runs(_ ids: [String]) -> [ProviderRun] {
         ids.map { ProviderRun(id: $0, name: "N-\($0)", iconLabel: "X", iconColor: .gray, result: .success(Report(meters: [])), configId: String($0.prefix { $0 != ":" })) }
@@ -481,6 +568,53 @@ func cardChecks() {
     let ordered = MenuModel.entries(runs: runs(["claude", "codex", "antigravity"]), pinned: nil, configErrors: [], updated: nil,
                                     launchAtLogin: false, version: "1", order: ["antigravity", "claude", "codex"], formatReset: { _ in "" })
     check("menuUsesSavedOrder", cardIds(ordered) == ["antigravity", "claude", "codex"])
+
+    let goodReport = sampleReport(45)
+    let prevGood = ProviderRun(id: "codex", name: "Codex", iconLabel: "CDX", iconColor: .gray, result: .success(goodReport))
+    let latestFail = ProviderRun(id: "codex", name: "Codex", iconLabel: "CDX", iconColor: .gray, result: .failure(ProviderFailure("timed out")))
+    let mergedFail = ProviderRun.merging(previous: [prevGood], latest: [latestFail])
+    check("mergeKeepsLastGoodOnFailure",
+          mergedFail.count == 1 && mergedFail[0].result == .success(goodReport) && mergedFail[0].staleError == "timed out")
+
+    let newerReport = sampleReport(60)
+    let prevStale = ProviderRun(id: "codex", name: "Codex", iconLabel: "CDX", iconColor: .gray, result: .success(goodReport), staleError: "timed out")
+    let latestOk = ProviderRun(id: "codex", name: "Codex", iconLabel: "CDX", iconColor: .gray, result: .success(newerReport))
+    let mergedOk = ProviderRun.merging(previous: [prevStale], latest: [latestOk])
+    check("mergeClearsStaleOnSuccess",
+          mergedOk.count == 1 && mergedOk[0].result == .success(newerReport) && mergedOk[0].staleError == nil)
+
+    let prevLoading = ProviderRun(id: "codex", name: "Codex", iconLabel: "CDX", iconColor: .gray, result: nil)
+    let prevFailed = ProviderRun(id: "codex", name: "Codex", iconLabel: "CDX", iconColor: .gray, result: .failure(ProviderFailure("old")))
+    let latestNoCli = ProviderRun(id: "codex", name: "Codex", iconLabel: "CDX", iconColor: .gray, result: .failure(ProviderFailure("no cli")))
+    let mergedFromNil = ProviderRun.merging(previous: [prevLoading], latest: [latestNoCli])
+    let mergedFromFail = ProviderRun.merging(previous: [prevFailed], latest: [latestNoCli])
+    check("mergeKeepsFailureWithoutPriorSuccess",
+          mergedFromNil.count == 1 && mergedFromNil[0].result == .failure(ProviderFailure("no cli")) && mergedFromNil[0].staleError == nil
+          && mergedFromFail.count == 1 && mergedFromFail[0].result == .failure(ProviderFailure("no cli")) && mergedFromFail[0].staleError == nil)
+
+    let alice = ProviderRun(id: "copilot:alice", name: "Copilot · alice", iconLabel: "GHP", iconColor: .gray,
+                            result: .success(sampleReport(10)), configId: "copilot", providerName: "Copilot", account: "alice")
+    let bob = ProviderRun(id: "copilot:bob", name: "Copilot · bob", iconLabel: "GHB", iconColor: .gray,
+                          result: .success(sampleReport(20)), configId: "copilot", providerName: "Copilot", account: "bob")
+    let listFail = ProviderRun(id: "copilot", name: "Copilot", iconLabel: "GHC", iconColor: .gray,
+                               result: .failure(ProviderFailure("gh failed")), configId: "copilot", providerName: "Copilot")
+    let mergedAccounts = ProviderRun.merging(previous: [alice, bob], latest: [listFail])
+    check("mergePreservesMultiAccountOnListFailure",
+          mergedAccounts.count == 2
+          && mergedAccounts.map(\.id) == ["copilot:alice", "copilot:bob"]
+          && mergedAccounts.allSatisfy { $0.staleError == "gh failed" }
+          && mergedAccounts[0].result == .success(sampleReport(10))
+          && mergedAccounts[1].result == .success(sampleReport(20)))
+
+    let staleRun = ProviderRun(id: "copilot:alice", name: "Copilot · alice", iconLabel: "GHP", iconColor: .gray,
+                               result: .success(sampleReport(45)), configId: "copilot", providerName: "Copilot",
+                               account: "alice", staleError: "timed out")
+    let staleCard = card(staleRun)
+    check("cardShowsStaleNotice",
+          !staleCard.charts.isEmpty
+          && staleCard.notices.contains(CardNotice(text: "Stale: timed out", tone: .orange))
+          && staleCard.configId == staleRun.configId)
+
     countChecks()
 }
 

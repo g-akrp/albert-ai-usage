@@ -48,8 +48,12 @@ func panelChecks() {
     check("rowsIntervalChecked", timedOpen.dropFirst().map(\.checked) == [false, false, true, false] && timedOpen[1].indented)
     let cycle = PanelModel.rows([.cycleIcon(true)], expanded: [], refreshing: false)
     check("rowsCycleChecked", cycle.count == 1 && cycle[0].kind == .cycleIcon && cycle[0].title == "Cycle Menu Bar" && cycle[0].checked == true)
+    let urgent = PanelModel.rows([.mostUrgent(true)], expanded: [], refreshing: false)
+    check("rowsMostUrgentChecked", urgent.count == 1 && urgent[0].kind == .mostUrgent && urgent[0].title == "Most Urgent" && urgent[0].checked == true)
     check("entriesHaveCycle", MenuModel.entries(runs: [], pinned: nil, configErrors: [], updated: nil, launchAtLogin: false, version: "1",
                                                 cycling: true, formatReset: { _ in "" }).contains(.cycleIcon(true)))
+    check("entriesHaveMostUrgent", MenuModel.entries(runs: [], pinned: nil, configErrors: [], updated: nil, launchAtLogin: false, version: "1",
+                                                     mostUrgent: true, formatReset: { _ in "" }).contains(.mostUrgent(true)))
     check("entriesHaveInterval", MenuModel.entries(runs: [], pinned: nil, configErrors: [], updated: nil, launchAtLogin: false, version: "1",
                                                    refreshSeconds: 30, formatReset: { _ in "" }).contains(.refreshInterval(30)))
 

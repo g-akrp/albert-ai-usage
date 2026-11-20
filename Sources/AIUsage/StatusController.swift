@@ -19,10 +19,13 @@ final class StatusController: NSObject {
     private lazy var panel: PanelController = {
         let panel = PanelController(actions: PanelActions(pin: { [weak self] key in
             self?.pinned = key
+            self?.menuBarMode = .pinned
+            self?.updateCycleTimer()
             self?.updateIcons()
             self?.refreshPanel()
         }, hide: { [weak self] id in
             self?.hiddenCards.insert(id)
+            self?.updateIcons()
             self?.refreshPanel()
         }, move: { [weak self] id, step in
             self?.moveCard(id, by: step)
@@ -32,6 +35,8 @@ final class StatusController: NSObject {
             if set.contains(id) { set.remove(id) } else { set.insert(id) }
             self?.collapsedCards = set
             self?.refreshPanel()
+        }, retry: { [weak self] configId in
+            self?.poller.refresh(configId: configId)
         }, row: { [weak self] in self?.rowClicked($0) }))
         panel.onClose = { [weak self] in
             self?.countdown?.invalidate()
@@ -80,10 +85,12 @@ final class StatusController: NSObject {
         set { defaults.set(newValue, forKey: "refreshSeconds") }
     }
 
-    private var cycling: Bool {
-        get { defaults.bool(forKey: "cycleIcon") }
-        set { defaults.set(newValue, forKey: "cycleIcon") }
+    private var menuBarMode: MenuBarMode {
+        get { MenuBarMode.resolve(stored: defaults.string(forKey: "menuBarMode"), legacyCycle: defaults.bool(forKey: "cycleIcon")) }
+        set { defaults.set(newValue.rawValue, forKey: "menuBarMode") }
     }
+
+    private var cycling: Bool { menuBarMode == .cycle }
 
     /// Steps the menu bar through the providers while Cycle Menu Bar is on; runs only then.
     private var cycleTimer: Timer?
@@ -154,7 +161,11 @@ final class StatusController: NSObject {
     private func updateIcons() {
         let effective = Pin.effective(pinned, in: visibleRuns)
         if let effective, effective != pinned { pinned = effective }
-        let shown = cycling ? Pin.cycle(cycleStep, in: cycleRuns) ?? effective : effective
+        let shown: String? = switch menuBarMode {
+        case .pinned: effective
+        case .cycle: Pin.cycle(cycleStep, in: cycleRuns) ?? effective
+        case .urgent: Pin.mostUrgent(in: visibleRuns, order: cardOrder, hidden: hiddenCards) ?? effective
+        }
         guard let button = statusItem.button else { return }
         let alpha: CGFloat = manualRefresh ? 0.5 : 1
         if button.alphaValue != alpha {
@@ -171,7 +182,7 @@ final class StatusController: NSObject {
         button.setAccessibilityLabel(spec.accessibility)
     }
 
-    private var cycleRuns: [ProviderRun] { CardOrder.sorted(visibleRuns, saved: cardOrder) }
+    private var cycleRuns: [ProviderRun] { Pin.cycleCandidates(visibleRuns, order: cardOrder, hidden: hiddenCards) }
 
     private func updateCycleTimer() {
         cycleTimer?.invalidate()
@@ -236,7 +247,7 @@ final class StatusController: NSObject {
                                            next: poller.nextRefresh.flatMap { RelativeTime.countdown(until: $0, now: Date()) },
                                            formatTime: timeFormatter.string(from:)),
             launchAtLogin: SMAppService.mainApp.status == .enabled,
-            version: AppVersion.current, hidden: hiddenCards, order: cardOrder, refreshSeconds: refreshSeconds, cycling: cycling, formatReset: { MenuModel.resetText($0, now: Date()) })
+            version: AppVersion.runtime, appName: AppVersion.appName, hidden: hiddenCards, order: cardOrder, refreshSeconds: refreshSeconds, cycling: menuBarMode == .cycle, mostUrgent: menuBarMode == .urgent, formatReset: { MenuModel.resetText($0, now: Date()) })
         return PanelContent(cards: PanelModel.cards(entries), collapsed: collapsedCards,
                             rows: PanelModel.rows(entries, expanded: expandedSections, refreshing: poller.isRunning))
     }
@@ -257,9 +268,15 @@ final class StatusController: NSObject {
         case .providers: expandedSections.formSymmetricDifference([PanelModel.providersSection])
         case .hiddenCards: expandedSections.formSymmetricDifference([PanelModel.hiddenSection])
         case .provider(let id): toggleProvider(id)
-        case .showCard(let id): hiddenCards.remove(id)
+        case .showCard(let id):
+            hiddenCards.remove(id)
+            updateIcons()
         case .cycleIcon:
-            cycling.toggle()
+            menuBarMode = menuBarMode == .cycle ? .pinned : .cycle
+            updateCycleTimer()
+            updateIcons()
+        case .mostUrgent:
+            menuBarMode = menuBarMode == .urgent ? .pinned : .urgent
             updateCycleTimer()
             updateIcons()
         case .launchAtLogin: toggleLaunchAtLogin()

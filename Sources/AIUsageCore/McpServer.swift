@@ -34,7 +34,7 @@ public struct McpServer {
             return encodeResult(id: id, result: [
                 "protocolVersion": "2024-11-05",
                 "capabilities": ["tools": [:] as [String: Any]],
-                "serverInfo": ["name": "aiusage", "version": AppVersion.current],
+                "serverInfo": ["name": "aiusage", "version": AppVersion.runtime],
             ])
         case "tools/list":
             return encodeResult(id: id, result: [
@@ -60,8 +60,8 @@ public struct McpServer {
         do {
             data = try load()
         } catch {
-            let text = Self.isNotFound(error)
-                ? "AIUsage app is not running or has no snapshot yet"
+            let text = SnapshotFile.isNotFound(error)
+                ? SnapshotFile.missingMessage
                 : error.localizedDescription
             return encodeResult(id: id, result: [
                 "content": [["type": "text", "text": text]],
@@ -87,12 +87,6 @@ public struct McpServer {
         return encodeResult(id: id, result: [
             "content": [["type": "text", "text": text]],
         ])
-    }
-
-    private static func isNotFound(_ error: Error) -> Bool {
-        let ns = error as NSError
-        return (ns.domain == NSCocoaErrorDomain && ns.code == NSFileReadNoSuchFileError)
-            || (ns.domain == NSPOSIXErrorDomain && ns.code == Int(ENOENT))
     }
 
     private func encodeResult(id: Any, result: [String: Any]) -> String {

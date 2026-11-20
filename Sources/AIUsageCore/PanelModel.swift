@@ -5,7 +5,7 @@ import Foundation
 public struct PanelRow: Equatable {
     public enum Kind: Equatable {
         case separator, detail, refresh, updated, refreshEvery, interval(seconds: Int), providers, provider(id: String), hiddenCards,
-             showCard(id: String), cycleIcon, launchAtLogin, openProvidersFolder, version, credit(before: String, after: String), quit
+             showCard(id: String), cycleIcon, mostUrgent, launchAtLogin, openProvidersFolder, version, credit(before: String, after: String), quit
     }
 
     public let kind: Kind
@@ -62,6 +62,7 @@ public enum PanelModel {
                 rows.append(PanelRow(.hiddenCards, "Hidden Cards", expanded: open))
                 if open { rows += cards.map { PanelRow(.showCard(id: $0.id), "Show \($0.name)", indented: true) } }
             case .cycleIcon(let on): rows.append(PanelRow(.cycleIcon, "Cycle Menu Bar", checked: on))
+            case .mostUrgent(let on): rows.append(PanelRow(.mostUrgent, "Most Urgent", checked: on))
             case .launchAtLogin(let on): rows.append(PanelRow(.launchAtLogin, "Launch at Login", checked: on))
             case .openProvidersFolder: rows.append(PanelRow(.openProvidersFolder, "Open Providers Folder\u{2026}"))
             case .version(let text): rows.append(PanelRow(.version, text, enabled: false))
